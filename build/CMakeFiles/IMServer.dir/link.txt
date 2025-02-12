@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/IMServer.dir/src/main.cpp.o CMakeFiles/IMServer.dir/src/server.cpp.o CMakeFiles/IMServer.dir/src/session.cpp.o -o IMServer  /usr/lib/x86_64-linux-gnu/libboost_system.so.1.74.0 /usr/lib/x86_64-linux-gnu/libboost_thread.so.1.74.0 -lpthread /usr/lib/x86_64-linux-gnu/libboost_atomic.so.1.74.0 

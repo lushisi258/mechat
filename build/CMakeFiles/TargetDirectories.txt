@@ -1,3 +1,0 @@
-/home/lushisi/projects/mechat/build/CMakeFiles/IMServer.dir
-/home/lushisi/projects/mechat/build/CMakeFiles/edit_cache.dir
-/home/lushisi/projects/mechat/build/CMakeFiles/rebuild_cache.dir
