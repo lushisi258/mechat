@@ -12,7 +12,9 @@ find_package(Boost REQUIRED COMPONENTS system thread)
 # 创建可执行文件
 add_executable(IMServer
     src/main.cpp
+    src/message.cpp
     src/server.cpp
+    src/session_manager.cpp
     src/session.cpp
 )
 

@@ -1,48 +1,43 @@
 // session.hpp
-#ifndef SESSION_HPP
-#define SESSION_HPP
-
+#pragma once
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
-#include <boost/beast/websocket.hpp>
-#include <memory>
+#include "message.hpp"
 
+namespace IM {
+
+namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
-namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    explicit Session(asio::io_context &ioc);
-    tcp::socket &Socket();
+    Session(asio::io_context& ioc);
+    tcp::socket& Socket();
     void Start();
+    void Send(const Message& msg);
 
 private:
-    // 接收消息
-    void OnAccept(beast::error_code ec);
-    // 读取消息
     void DoRead();
-    // 处理消息
-    void OnRead(beast::error_code ec, std::size_t bytes_transferred);
-
-    // 心跳机制相关
-    // 启动心跳定时器，结束后触发回调函数 OnHeartbeatTimer()
+    void OnAccept(beast::error_code ec);
+    void OnRead(beast::error_code ec, std::size_t bytes);
+    void HandleMessage(const Message& msg);
+    
+    // 心跳相关方法
     void StartHeartbeatTimer();
-    // 心跳检测回调函数，发送Ping帧
     void OnHeartbeatTimer(beast::error_code ec);
-    // Ping帧发送相关，启动Pong超时计时器
     void OnPingSent(beast::error_code ec);
     void StartPongTimeoutTimer();
     void OnPongTimeout(beast::error_code ec);
     void OnPongReceived();
     void Close();
 
-    // 成员变量
-    websocket::stream<tcp::socket> ws_;       // Websocket对象
-    beast::flat_buffer buffer_;               // 缓冲区
-    asio::steady_timer heartbeat_timer_;      // 心跳定时器
-    asio::steady_timer pong_timeout_timer_;   // Pong响应超时定时器
+    websocket::stream<tcp::socket> ws_;
+    beast::flat_buffer buffer_;
+    asio::steady_timer heartbeat_timer_;
+    asio::steady_timer pong_timeout_timer_;
+    std::string user_id_;
 };
 
-#endif // SESSION_HPP
+} // namespace IM

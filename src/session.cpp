@@ -1,14 +1,14 @@
 #include "../include/session.hpp"
+#include "../include/session_manager.hpp"
 #include <iostream>
 
+namespace IM {
+
 Session::Session(asio::io_context &ioc)
-    : ws_(asio::make_strand(ioc)),
-      heartbeat_timer_(ws_.get_executor()),
+    : ws_(asio::make_strand(ioc)), heartbeat_timer_(ws_.get_executor()),
       pong_timeout_timer_(ws_.get_executor()) {}
 
-tcp::socket &Session::Socket() {
-    return ws_.next_layer();
-}
+tcp::socket &Session::Socket() { return ws_.next_layer(); }
 
 void Session::Start() {
     ws_.async_accept(
@@ -20,16 +20,12 @@ void Session::OnAccept(beast::error_code ec) {
         std::cerr << "Accept error: " << ec.message() << std::endl;
         return;
     }
-    std::cout << "WebSocket connection accepted!" << std::endl;
-
-    // 设置控制回调以处理Pong帧
-    ws_.control_callback(
-        [self = shared_from_this()](websocket::frame_type type, beast::string_view) {
-            if (type == websocket::frame_type::pong) {
-                self->OnPongReceived();
-            }
-        });
-
+    ws_.control_callback([self = shared_from_this()](websocket::frame_type type,
+                                                     beast::string_view) {
+        if (type == websocket::frame_type::pong) {
+            self->OnPongReceived();
+        }
+    });
     StartHeartbeatTimer();
     DoRead();
 }
@@ -39,34 +35,61 @@ void Session::DoRead() {
                                                       shared_from_this()));
 }
 
-// 消息处理
-void Session::OnRead(beast::error_code ec, std::size_t bytes_transferred) {
-    if (ec == websocket::error::closed) {
-        std::cout << "WebSocket connection closed" << std::endl;
-        return;
-    }
+void Session::OnRead(beast::error_code ec, std::size_t bytes) {
     if (ec) {
-        std::cerr << "Read error: " << ec.message() << std::endl;
+        if (ec == websocket::error::closed) {
+            SessionManager::GetInstance().Remove(user_id_);
+        }
+        Close();
         return;
     }
 
-    std::cout << "Received: " << beast::make_printable(buffer_.data())
-              << std::endl;
-    // 清空缓冲区
-    buffer_.consume(buffer_.size());
+    try {
+        auto msg = Message::FromJson(beast::buffers_to_string(buffer_.data()));
+        HandleMessage(msg);
+    } catch (const std::exception &e) {
+        std::cerr << "Message parse error: " << e.what() << std::endl;
+        Close();
+        return;
+    }
 
-    // 收到数据后重置心跳定时器和超时定时器
-    heartbeat_timer_.cancel();
-    pong_timeout_timer_.cancel();
-    StartHeartbeatTimer();
-
+    buffer_.consume(bytes);
     DoRead();
+}
+
+void Session::HandleMessage(const Message &msg) {
+    switch (msg.type) {
+    case MsgType::Heartbeat:
+        heartbeat_timer_.cancel();
+        StartHeartbeatTimer();
+        break;
+    case MsgType::Login:
+        // 实现认证逻辑
+        user_id_ = msg.sender;
+        SessionManager::GetInstance().Add(shared_from_this(), user_id_);
+        break;
+    case MsgType::Text:
+        if (msg.receiver == "broadcast") {
+            SessionManager::GetInstance().Broadcast(msg);
+        } else {
+            SessionManager::GetInstance().SendToUser(msg.receiver, msg);
+        }
+        break;
+    }
+}
+
+void Session::Send(const Message &msg) {
+    ws_.async_write(asio::buffer(msg.ToJson()),
+                    [self = shared_from_this()](beast::error_code ec, size_t) {
+                        if (ec)
+                            self->Close();
+                    });
 }
 
 void Session::StartHeartbeatTimer() {
     heartbeat_timer_.expires_after(std::chrono::seconds(30));
-    heartbeat_timer_.async_wait(
-        beast::bind_front_handler(&Session::OnHeartbeatTimer, shared_from_this()));
+    heartbeat_timer_.async_wait(beast::bind_front_handler(
+        &Session::OnHeartbeatTimer, shared_from_this()));
 }
 
 void Session::OnHeartbeatTimer(beast::error_code ec) {
@@ -80,7 +103,8 @@ void Session::OnHeartbeatTimer(beast::error_code ec) {
     }
 
     // 发送Ping
-    ws_.async_ping(beast::websocket::ping_data{},
+    ws_.async_ping(
+        beast::websocket::ping_data{},
         beast::bind_front_handler(&Session::OnPingSent, shared_from_this()));
 }
 
@@ -133,3 +157,5 @@ void Session::Close() {
     heartbeat_timer_.cancel();
     pong_timeout_timer_.cancel();
 }
+
+} // namespace IM
