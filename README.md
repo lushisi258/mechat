@@ -3,23 +3,20 @@
 ## 项目文件结构
 
 ```txt
-im-server/
+mechat/
 │── CMakeLists.txt          # CMake 构建配置
 │── src/
 │   │── main.cpp            # 入口文件，启动 WebSocket 服务器
+│   │── message.cpp         # 消息结构体 实现
 │   │── server.cpp          # 服务器核心逻辑
-│   │── server.hpp          # 服务器类声明
+│   │── session_manager.cpp # 管理 session 会话
 │   │── session.cpp         # WebSocket 会话管理
-│   │── session.hpp         # WebSocket 会话类声明
-│   │── message_handler.cpp # 处理消息逻辑
-│   │── message_handler.hpp # 消息处理类声明
-│   │── user_manager.cpp    # 管理用户连接状态
-│   │── user_manager.hpp    # 用户管理类声明
 │── include/                # 头文件目录
-│   │── server.hpp
-│   │── session.hpp
-│   │── message_handler.hpp
-│   │── user_manager.hpp
+│   │── main.hpp 
+│   │── message.hpp 
+│   │── server.hpp        
+│   │── session_manager.hpp 
+│   │── session.hpp        
 │── config/
 │   │── server_config.json  # 配置文件，存储端口号等
 │── tests/
@@ -33,26 +30,26 @@ im-server/
 
 ## 项目开发规划
 
-### **阶段一：核心基础设施搭建**
+### **一、核心基础功能**
 
-1. **通信框架强化**
-   - ✅完善异步网络层（基于Boost.Asio）
-   - ✅实现协议解析基础模块（长度头拆包/封包）
-   - ✅搭建基础Session管理容器
+1. **通信框架**
+   - ✅异步网络层（基于Boost.Asio）
+   - ✅协议解析基础模块（长度头拆包/封包）
+   - ✅基础Session管理容器
 
 2. **开发调试工具**
-   - 实现网络层日志系统
-   - 创建协议模拟测试工具
-   - 搭建内存泄漏检测机制
+   - 日志系统
+   - ✅自动化测试框架
+   - 内存泄漏检测机制
 
-3. **安全基建设计**
-   - 实现TLS加密通信支持
-   - 开发连接频率限制模块
-   - 添加基础DDOS防护（IP黑名单）
+3. **基本安全设计**
+   - TLS加密通信支持
+   - 连接频率限制模块
+   - 基础DDOS防护（IP黑名单）
 
 ---
 
-### **阶段二：用户系统实现**
+### **二、用户系统**
 
 1. **用户生命周期管理**
    - 注册/登录/注销协议实现

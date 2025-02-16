@@ -45,6 +45,12 @@ void Session::OnRead(beast::error_code ec, std::size_t bytes) {
     }
 
     try {
+        // 记录原始数据
+        std::string raw = beast::buffers_to_string(buffer_.data());
+        IM::NetworkLogger::instance().log(
+            IM::NetworkLogger::DEBUG, "IN", ws_.next_layer().remote_endpoint(),
+            raw, beast::buffers_to_string(buffer_.data()));
+
         auto msg = Message::FromJson(beast::buffers_to_string(buffer_.data()));
         HandleMessage(msg);
     } catch (const std::exception &e) {
@@ -72,6 +78,7 @@ void Session::HandleMessage(const Message &msg) {
         if (msg.receiver == "broadcast") {
             SessionManager::GetInstance().Broadcast(msg);
         } else {
+            std::cout << msg.content << std::endl;
             SessionManager::GetInstance().SendToUser(msg.receiver, msg);
         }
         break;
@@ -79,6 +86,12 @@ void Session::HandleMessage(const Message &msg) {
 }
 
 void Session::Send(const Message &msg) {
+    // 记录发送数据
+    std::string json = msg.ToJson();
+    IM::NetworkLogger::instance().log(IM::NetworkLogger::DEBUG, "OUT",
+                                      ws_.next_layer().remote_endpoint(), json,
+                                      "Sending message");
+
     ws_.async_write(asio::buffer(msg.ToJson()),
                     [self = shared_from_this()](beast::error_code ec, size_t) {
                         if (ec)

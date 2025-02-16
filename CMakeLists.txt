@@ -13,6 +13,7 @@ find_package(Boost REQUIRED COMPONENTS system thread)
 add_executable(IMServer
     src/main.cpp
     src/message.cpp
+    src/network_logger.cpp
     src/server.cpp
     src/session_manager.cpp
     src/session.cpp

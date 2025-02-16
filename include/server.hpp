@@ -1,20 +1,25 @@
 // server.hpp
 #pragma once
-#include <boost/asio.hpp>
 #include "session.hpp"
+#include <boost/asio.hpp>
 
 namespace IM {
 
 class Server {
-public:
-    Server(asio::io_context& ioc, unsigned short port);
+  public:
+    // 初始化服务器
+    Server(asio::io_context &ioc, unsigned short port);
+    // 服务器启动
     void Start();
 
-private:
+  private:
+    // 接受用户连接
     void DoAccept();
-    void HandleAccept(std::shared_ptr<Session> session, const boost::system::error_code& error);
+    // 处理连接
+    void HandleAccept(std::shared_ptr<Session> session,
+                      const boost::system::error_code &error);
 
-    asio::io_context& io_context_;
+    asio::io_context &io_context_;
     asio::ip::tcp::acceptor acceptor_;
 };
 

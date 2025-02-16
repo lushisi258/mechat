@@ -3,6 +3,7 @@
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "message.hpp"
+#include "network_logger.hpp"
 
 namespace IM {
 
