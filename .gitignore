@@ -1,5 +1,5 @@
-# 忽略build文件夹
 /build/
+/config/
 /logs/
 /tests/.pytest_cache/
 /tests/__pycache__/

@@ -18,16 +18,16 @@ class NetworkLogger {
     // 单例访问
     static NetworkLogger &instance();
 
-    // 初始化配置（静态方法）
+    // 初始化配置
     static void init(Level console_level = INFO, Level file_level = DEBUG,
                      const std::string &log_path = "../logs/network.log");
 
-    // 日志记录接口（成员方法）
+    // 日志记录接口
     void log(Level level, const std::string &direction,
              const net::ip::tcp::endpoint &endpoint,
              const std::string &raw_data, const std::string &parsed_data);
 
-    // 过滤器管理（静态方法）
+    // 过滤器管理
     static void add_filter(Filter filter);
     void clear_filters();
 

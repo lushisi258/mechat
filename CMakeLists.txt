@@ -3,6 +3,15 @@ cmake_minimum_required(VERSION 3.10)
 # 项目名称
 project(IMServer)
 
+# ASan 开关选项
+option(ENABLE_ASAN "Enable AddressSanitizer for memory checks" OFF)
+# 配置编译选项
+if(ENABLE_ASAN)
+    # 添加 ASan 编译和链接标志
+    add_compile_options(-fsanitize=address -g -O1)
+    add_link_options(-fsanitize=address)
+endif()
+
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
 
