@@ -17,12 +17,14 @@ set(CMAKE_CXX_STANDARD 17)
 
 # 寻找 Boost 库并指定所需的组件
 find_package(Boost REQUIRED COMPONENTS system thread)
+# 寻找 OpenSSL 库
+find_package(OpenSSL REQUIRED)
 
 # 创建可执行文件
 add_executable(IMServer
     src/main.cpp
     src/message.cpp
-    src/network_logger.cpp
+    src/logger.cpp
     src/server.cpp
     src/session_manager.cpp
     src/session.cpp
@@ -31,5 +33,5 @@ add_executable(IMServer
 # 包含头文件目录
 target_include_directories(IMServer PRIVATE include)
 
-# 链接 Boost 库的 system 和 thread 组件，以及 pthread 库
-target_link_libraries(IMServer PRIVATE Boost::system Boost::thread pthread)
+# 链接组件
+target_link_libraries(IMServer PRIVATE Boost::system Boost::thread pthread OpenSSL::SSL OpenSSL::Crypto)

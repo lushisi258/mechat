@@ -1,17 +1,36 @@
 // session.cpp
 #include "../include/session.hpp"
 #include "../include/session_manager.hpp"
-#include <iostream>
 
 namespace IM {
 
-Session::Session(asio::io_context &ioc)
-    : ws_(asio::make_strand(ioc)), heartbeat_timer_(ws_.get_executor()),
+Session::Session(asio::io_context &ioc, asio::ssl::context &ssl_context)
+    : ws_(asio::make_strand(ioc), ssl_context),
+      heartbeat_timer_(ws_.get_executor()),
       pong_timeout_timer_(ws_.get_executor()) {}
 
-tcp::socket &Session::Socket() { return ws_.next_layer(); }
+tcp::socket &Session::Socket() {
+    return ws_.next_layer().next_layer();
+} // 返回底层 socket
 
 void Session::Start() {
+    // SSL 握手
+    DoHandshake();
+}
+
+void Session::DoHandshake() {
+    // 启动 SSL 握手
+    ws_.next_layer().async_handshake(
+        boost::asio::ssl::stream_base::server,
+        beast::bind_front_handler(&Session::OnHandshake, shared_from_this()));
+}
+
+void Session::OnHandshake(beast::error_code ec) {
+    if (ec) {
+        std::cerr << "SSL Handshake error: " << ec.message() << std::endl;
+        return;
+    }
+    // 完成 WebSocket 握手
     ws_.async_accept(
         beast::bind_front_handler(&Session::OnAccept, shared_from_this()));
 }
@@ -46,11 +65,11 @@ void Session::OnRead(beast::error_code ec, std::size_t bytes) {
     }
 
     try {
-        // 记录原始数据
+        // 记录原始消息
         std::string raw = beast::buffers_to_string(buffer_.data());
-        IM::NetworkLogger::instance().log(
-            IM::NetworkLogger::DEBUG, "IN", ws_.next_layer().remote_endpoint(),
-            raw, beast::buffers_to_string(buffer_.data()));
+        Logger::instance().network_log(
+            Logger::IN, socket.remote_endpoint().address().to_string(), raw,
+            beast::buffers_to_string(buffer_.data()));
 
         auto msg = Message::FromJson(beast::buffers_to_string(buffer_.data()));
         HandleMessage(msg);
@@ -87,17 +106,17 @@ void Session::HandleMessage(const Message &msg) {
 }
 
 void Session::Send(const Message &msg) {
-    // 记录发送数据
-    std::string json = msg.ToJson();
-    IM::NetworkLogger::instance().log(IM::NetworkLogger::DEBUG, "OUT",
-                                      ws_.next_layer().remote_endpoint(), json,
-                                      "Sending message");
-
-    ws_.async_write(asio::buffer(msg.ToJson()),
+    // 将消息转换为json格式
+    std::string msg_json = msg.ToJson();
+    ws_.async_write(asio::buffer(msg_json),
                     [self = shared_from_this()](beast::error_code ec, size_t) {
                         if (ec)
                             self->Close();
                     });
+    // 记录发送数据
+    Logger::instance().network_log(
+        Logger::IN, socket.remote_endpoint().address().to_string(), msg_json,
+        beast::buffers_to_string(buffer_.data()));
 }
 
 void Session::StartHeartbeatTimer() {
@@ -164,7 +183,8 @@ void Session::OnPongReceived() {
 
 void Session::Close() {
     beast::error_code ec;
-    ws_.close(websocket::close_code::normal, ec);
+    ws_.next_layer().shutdown(ec);
+    ws_.close(boost::beast::websocket::close_code::normal, ec);
     if (ec) {
         std::cerr << "Close error: " << ec.message() << std::endl;
     }

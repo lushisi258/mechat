@@ -1,5 +1,4 @@
 // main.cpp
-#include "../include/network_logger.hpp"
 #include "../include/server.hpp"
 #include <atomic>
 #include <boost/asio.hpp>
@@ -16,16 +15,27 @@ int main() {
     std::signal(SIGTERM, handle_signal);
 
     try {
-        const unsigned short port = 2233;
+        // json 配置
+        nlohmann::json config;
+        // 读取配置文件
+        std::ifstream file("/home/lushisi/projects/mechat/config/config.json");
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file" << std::endl;
+        }
+        // 解析配置数据
+        try {
+            file >> config;
+        } catch (const nlohmann::json::parse_error &e) {
+            std::cerr << "Parse error: " << e.what() << std::endl;
+        }
 
         // 初始化日志系统
-        IM::NetworkLogger::init(IM::NetworkLogger::INFO,
-                                IM::NetworkLogger::DEBUG, "logs/network.log");
+        IM::Logger::init(IM::Logger::INFO, IM::Logger::DEBUG,
+                         "logs/network.log");
 
         // 启动服务器
         boost::asio::io_context ioc;
-        IM::Server server(ioc, port);
-        std::cout << "服务器运行在端口" << port << std::endl;
+        IM::Server server(ioc, config);
 
         // 启动异步操作后，进入非阻塞循环
         while (!stop_server) {
