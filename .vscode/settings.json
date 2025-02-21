@@ -1,5 +1,4 @@
 {
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
         "*.ipp": "cpp",
         "system_error": "cpp",
@@ -83,6 +82,23 @@
         "io_context": "cpp",
         "netfwd": "cpp",
         "socket": "cpp",
-        "timer": "cpp"
-    }
+        "timer": "cpp",
+        "strstream": "cpp"
+    },
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "previewLimit": 50,
+            "server": "pc.lushisi.top",
+            "port": 2228,
+            "driver": "MariaDB",
+            "name": "mechat",
+            "password": "lushisi.2233",
+            "username": "lushisi",
+            "database": "mechat"
+        }
+    ]
 }

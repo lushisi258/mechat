@@ -137,18 +137,23 @@ void Logger::async_write() {
 
 std::string Logger::format_entry(const LogEntry &entry) {
     std::ostringstream ss;
-    ss << "[" << entry.timestamp << "]"
-       << "[" << entry.level << "]"
-       << "[" << entry.content << "]";
+    ss << "[TIME " << entry.timestamp << "]"
+       << "[LEVEL " << entry.level << "]"
+       << "[CONTENT " << entry.content << "]";
 
-    if (entry.direction)
-        ss << "[" << *entry.direction << "]";
+    if (entry.direction) {
+        if (entry.direction == Logger::direction::IN) {
+            ss << "[" << "IN" << "]";
+        } else {
+            ss << "[" << "OUT" << "]";
+        }
+    };
     if (entry.endpoint)
-        ss << "[" << *entry.endpoint << "]";
+        ss << "[IP " << *entry.endpoint << "]" << std::endl;
     if (entry.raw_hex)
-        ss << "[RAW] " << *entry.raw_hex;
+        ss << "[RAW: " << *entry.raw_hex << "]" << std::endl;
     if (entry.parsed_json)
-        ss << "[PARSE] " << *entry.parsed_json;
+        ss << "[PARSE: " << *entry.parsed_json << "]" << std::endl;
 
     return ss.str();
 }

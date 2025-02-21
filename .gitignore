@@ -3,3 +3,4 @@
 /logs/
 /tests/.pytest_cache/
 /tests/__pycache__/
+mechat.session.sql

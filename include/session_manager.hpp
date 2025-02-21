@@ -1,7 +1,7 @@
 // session_manager.hpp
 #pragma once
-#include "message.hpp"
-#include "session.hpp"
+#include "../include/message.hpp"
+#include "../include/session.hpp"
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -12,10 +12,10 @@ class SessionManager {
   public:
     static SessionManager &GetInstance();
 
-    void Add(std::shared_ptr<Session> session, const std::string &user_id);
-    void Remove(const std::string &user_id);
-    void SendToUser(const std::string &user_id, const Message &msg);
-    void Broadcast(const Message &msg);
+    void add(std::shared_ptr<Session> session, const std::string &user_id);
+    void remove(const std::string &user_id);
+    void send_to_user(const std::string &user_id, const Message &msg);
+    void broadcast(const Message &msg);
 
   private:
     SessionManager() = default;

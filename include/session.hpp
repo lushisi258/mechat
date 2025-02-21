@@ -14,27 +14,27 @@ class Session : public std::enable_shared_from_this<Session> {
   public:
     Session(asio::io_context &ioc, asio::ssl::context &ssl_context);
     tcp::socket &Socket();
-    void Start();
-    void Send(const Message &msg);
+    void start();
+    void send(const Message &msg);
 
   private:
-    void DoRead();
-    void OnAccept(beast::error_code ec);
-    void OnRead(beast::error_code ec, std::size_t bytes);
-    void HandleMessage(const Message &msg);
+    void do_read();
+    void on_accept(beast::error_code ec);
+    void on_read(beast::error_code ec, std::size_t bytes);
+    void handle_message(const Message &msg);
 
     // SSL 握手
-    void DoHandshake();
-    void OnHandshake(beast::error_code ec);
+    void do_handshake();
+    void on_handshake(beast::error_code ec);
 
     // 心跳相关方法
-    void StartHeartbeatTimer();
-    void OnHeartbeatTimer(beast::error_code ec);
-    void OnPingSent(beast::error_code ec);
-    void StartPongTimeoutTimer();
-    void OnPongTimeout(beast::error_code ec);
-    void OnPongReceived();
-    void Close();
+    void start_heartbeat_timer();
+    void on_heartbeat_timer(beast::error_code ec);
+    void on_ping_sent(beast::error_code ec);
+    void start_pong_timeout_timer();
+    void on_pong_timeout(beast::error_code ec);
+    void on_pong_received();
+    void close();
 
     // 使用 SSL 加密的 WebSocket 流
     boost::beast::websocket::stream<boost::asio::ssl::stream<tcp::socket>> ws_;

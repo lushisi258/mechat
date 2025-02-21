@@ -25,8 +25,8 @@ class Logger {
     static Logger &instance();
 
     // 初始化配置
-    static void init(Level console_level = INFO, Level file_level = DEBUG,
-                     const std::string &log_path = "../logs/asiowork.log");
+    static void init(Level console_level = WARNING, Level file_level = DEBUG,
+                     const std::string &log_path = "../logs/mechat.log");
 
     // 日志记录接口
     void log(Level level, const std::string &content);
@@ -81,11 +81,11 @@ class Logger {
 
     // 获取时间戳
     std::string get_current_time();
-    // 将日志条目写入文件
-    void async_write();
     // 格式化日志条目
     std::string format_entry(const LogEntry &entry);
     // 将原始数据转化为16进制
     std::string generate_hex_dump(const std::string &data);
+    // 将日志条目写入文件
+    void async_write();
 };
 } // namespace IM

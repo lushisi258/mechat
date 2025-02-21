@@ -4,30 +4,33 @@
 
 ```txt
 mechat/
-│── CMakeLists.txt          # CMake 构建配置
-│── src/
-│   │── main.cpp            # 入口文件，启动 WebSocket 服务器
-│   │── message.cpp         # 消息结构体 实现
-│   │── network_logger.cpp  # 网络日志记录
-│   │── server.cpp          # 服务器核心逻辑
-│   │── session_manager.cpp # 管理 session 会话
-│   │── session.cpp         # WebSocket 会话管理
+│── build/                  # 编译输出目录
+│── config/
+│   │── config.json         # 配置文件
+│── docs/
+│   │── API.md
+│   │── DATABASE.md 
+│   │── README.md
 │── include/                # 头文件目录
 │   │── main.hpp 
 │   │── message.hpp 
-│   │── network_logger.hpp
+│   │── logger.hpp
 │   │── server.hpp        
 │   │── session_manager.hpp 
-│   │── session.hpp        
-│── config/
-│   │── config.json  # 配置文件
+│   │── session.hpp
+│── logs/                   # 服务器日志文件存放目录   
+│── src/
+│   │── main.cpp            # 入口文件，启动 WebSocket 服务器
+│   │── message.cpp         # 消息结构体 实现
+│   │── logger.cpp  # 网络日志记录
+│   │── server.cpp          # 服务器核心逻辑
+│   │── session_manager.cpp # 管理 session 会话
+│   │── session.cpp         # WebSocket 会话管理
 │── tests/
 │   │── test_server.cpp     # 测试 WebSocket 服务器
 │   │── test_session.cpp    # 测试 WebSocket 会话
 │── third_party/            # 第三方库（如 Boost）
-│── logs/                   # 服务器日志文件存放目录
-│── build/                  # 编译输出目录
-│── README.md               # 项目说明文档
+│── CMakeLists.txt          # CMake 构建配置
 ```
 
 ## 项目开发规划
@@ -47,28 +50,28 @@ mechat/
    - 🟢内存泄漏检测
 
 3. **基本安全设计**
-   - 🔴WSS加密通信
-   - 🔴连接频率限制
-   - 🔴基础DDOS防护（IP黑名单）
+   - 🟢WSS加密通信
+   - 🔵连接频率限制
+   - 🔵基础DDOS防护（IP黑名单）
 
 ---
 
 ### **二、用户系统**
 
-1. **用户管理**
+1. **数据存储**
+   - 🟢数据库选择（MySQL/MongoDB/Redis组合）
+   - 🟢用户表（含索引优化）
+   - 🟢数据库连接池
+
+2. **用户管理**
    - 🔴注册/登录/注销
    - 🔴密码安全存储（bcrypt/PBKDF2算法）
    - 🔴会话管理（JWT令牌机制）
 
-2. **基础关系网络**
+3. **基础关系网络**
    - 🔴好友添加/删除/黑名单功能
    - 🔵用户状态同步（在线/离线/忙碌）
    - 🔵基础用户资料存储（昵称/头像URL）
-
-3. **数据持久化**
-   - 🔴数据库选择（MySQL/MongoDB/Redis组合）
-   - 🔴用户表（含索引优化）
-   - 🔴数据库连接池
 
 ---
 
