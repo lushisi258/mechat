@@ -35,8 +35,8 @@ class MySQLConnectionPool {
     MySQLConnectionPool(const MySQLConnectionPool &) = delete;
     MySQLConnectionPool &operator=(const MySQLConnectionPool &) = delete;
 
-    std::unique_ptr<MYSQL, std::function<void(MYSQL *)>> getConnection();
-    void releaseConnection(MYSQL *conn);
+    std::unique_ptr<MYSQL, std::function<void(MYSQL *)>> get_connection();
+    void release_connection(MYSQL *conn);
 
     ~MySQLConnectionPool();
 
@@ -48,7 +48,7 @@ class MySQLConnectionPool {
     size_t max_pool_size_;
     size_t active_connections_ = 0;
 
-    MYSQL *createRawConnection();
+    MYSQL *create_raw_connection();
 };
 
 // Redis 连接池
@@ -60,8 +60,8 @@ class RedisConnectionPool {
     RedisConnectionPool(const RedisConnectionPool &) = delete;
     RedisConnectionPool &operator=(const RedisConnectionPool &) = delete;
 
-    std::unique_ptr<redisContext, void (*)(redisContext *)> getConnection();
-    void releaseConnection(
+    std::unique_ptr<redisContext, void (*)(redisContext *)> get_connection();
+    void release_connection(
         std::unique_ptr<redisContext, void (*)(redisContext *)> conn);
 
     ~RedisConnectionPool();
@@ -85,7 +85,7 @@ class MongoDBConnectionPool {
     MongoDBConnectionPool(const MongoDBConnectionPool &) = delete;
     MongoDBConnectionPool &operator=(const MongoDBConnectionPool &) = delete;
 
-    mongocxx::client getConnection();
+    mongocxx::client get_connection();
 
   private:
     static mongocxx::instance instance_;

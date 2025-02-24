@@ -4,14 +4,16 @@
 
 namespace IM {
 
-Session::Session(asio::io_context &ioc, asio::ssl::context &ssl_context)
+Session::Session(asio::io_context &ioc, asio::ssl::context &ssl_context,
+                 MySQLConnectionPool &mysql_pool,
+                 RedisConnectionPool &redis_pool,
+                 MongoDBConnectionPool &mongo_pool)
     : ws_(asio::make_strand(ioc), ssl_context),
       heartbeat_timer_(ws_.get_executor()),
-      pong_timeout_timer_(ws_.get_executor()) {}
+      pong_timeout_timer_(ws_.get_executor()), mysql_pool_(mysql_pool),
+      redis_pool_(redis_pool), mongo_pool_(mongo_pool) {}
 
-tcp::socket &Session::Socket() {
-    return ws_.next_layer().next_layer();
-} // 返回底层 socket
+tcp::socket &Session::socket() { return ws_.next_layer().next_layer(); }
 
 void Session::start() {
     // SSL 握手
@@ -58,7 +60,7 @@ void Session::do_read() {
 void Session::on_read(beast::error_code ec, std::size_t bytes) {
     if (ec) {
         if (ec == websocket::error::closed) {
-            SessionManager::GetInstance().remove(user_id_);
+            SessionManager::get_instance().remove(user_id_);
         }
         close();
         return;
@@ -68,10 +70,10 @@ void Session::on_read(beast::error_code ec, std::size_t bytes) {
         // 记录原始消息
         std::string raw = beast::buffers_to_string(buffer_.data());
         Logger::instance().network_log(
-            Logger::IN, socket.remote_endpoint().address().to_string(), raw,
+            Logger::IN, socket().remote_endpoint().address().to_string(), raw,
             beast::buffers_to_string(buffer_.data()));
 
-        auto msg = Message::FromJson(beast::buffers_to_string(buffer_.data()));
+        auto msg = Message::from_json(beast::buffers_to_string(buffer_.data()));
         handle_message(msg);
 
     } catch (const std::exception &e) {
@@ -88,10 +90,9 @@ void Session::handle_message(const Message &msg) {
     switch (msg.type) {
     case MsgType::Text:
         if (msg.receiver == "broadcast") {
-            SessionManager::GetInstance().broadcast(msg);
-        } else {
-            std::cout << msg.content << std::endl;
-            SessionManager::GetInstance().send_to_user(msg.receiver, msg);
+            SessionManager::get_instance().broadcast(msg);
+        } else if (user_id_) {
+            SessionManager::get_instance().send_to_user(user_id_, msg);
         }
         break;
     case MsgType::Image:
@@ -102,8 +103,11 @@ void Session::handle_message(const Message &msg) {
         break;
     case MsgType::Login:
         // 实现认证逻辑
-        user_id_ = msg.sender;
-        SessionManager::GetInstance().add(shared_from_this(), user_id_);
+        recv_login_msg(msg);
+        break;
+    case MsgType::Register:
+        // 处理注册消息
+        recv_register_msg(msg);
         break;
     case MsgType::StatusNotify:
         break;
@@ -113,9 +117,100 @@ void Session::handle_message(const Message &msg) {
     }
 }
 
+int Session::recv_register_msg(const Message &msg) {
+    // 对密码进行哈希处理
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char *>(msg.meta.c_str()),
+           msg.meta.size(), hash);
+    // 将哈希结果转换为十六进制字符串
+    std::string password_hash;
+    char buf[3];
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        snprintf(buf, sizeof(buf), "%02x", hash[i]);
+        password_hash += buf;
+    }
+
+    // 查询语句
+    auto conn = mysql_pool_.get_connection();
+    std::string query =
+        "INSERT INTO users (email, password_hash) "
+        "VALUES (?, ?) "
+        "RETURNING id"; // 使用RETURNING语法直接获取插入的ID（需MySQL 8.0+）
+
+    MYSQL_STMT *stmt = mysql_stmt_init(conn.get());
+    if (!stmt)
+        return EXIT_FAILURE;
+
+    // 自动释放资源
+    auto stmt_guard = std::unique_ptr<MYSQL_STMT, decltype(&mysql_stmt_close)>(
+        stmt, mysql_stmt_close);
+
+    if (mysql_stmt_prepare(stmt, query.c_str(), query.size())) {
+        std::cerr << "Prepare error: " << mysql_error(conn.get()) << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // 参数绑定
+    std::string email = msg.sender;
+    MYSQL_BIND params[2] = {};
+    params[0].buffer_type = MYSQL_TYPE_STRING;
+    params[0].buffer = email.data();
+    params[0].buffer_length = email.length();
+
+    params[1].buffer_type = MYSQL_TYPE_STRING;
+    params[1].buffer = password_hash.data();
+    params[1].buffer_length = password_hash.length();
+
+    if (mysql_stmt_bind_param(stmt, params)) {
+        std::cerr << "Bind error" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // 执行并处理结果
+    if (mysql_stmt_execute(stmt)) {
+        // 处理唯一性约束错误（错误码1062）
+        if (mysql_errno(conn.get()) == 1062) {
+            std::cerr << "Email already exists: " << email << std::endl;
+            return EXIT_FAILURE;
+        }
+        std::cerr << "Execute error: " << mysql_error(conn.get()) << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // 获取插入的ID
+    MYSQL_BIND result;
+    int user_id = -1;
+    memset(&result, 0, sizeof(result));
+    result.buffer_type = MYSQL_TYPE_LONG;
+    result.buffer = &user_id;
+
+    mysql_stmt_bind_result(stmt, &result);
+    mysql_stmt_fetch(stmt);
+
+    // 会话管理
+    SessionManager::get_instance().add(shared_from_this(), user_id);
+
+    // 发送响应
+    Message response_msg{};
+    response_msg.type = MsgType::Login;
+    response_msg.meta = "Login success";
+    response_msg.content =
+        SessionManager::get_instance().generate_jwt(msg.sender);
+    response_msg.timestamp =
+        std::chrono::system_clock::now().time_since_epoch().count();
+    send(response_msg);
+
+    return EXIT_SUCCESS;
+}
+
+int Session::recv_login_msg(const Message &msg) {
+    std::cout << "recv login" << std::endl;
+    return 0;
+}
+
 void Session::send(const Message &msg) {
     // 将消息转换为json格式
-    std::string msg_json = msg.ToJson();
+    std::string msg_json = msg.to_json();
     ws_.async_write(asio::buffer(msg_json),
                     [self = shared_from_this()](beast::error_code ec, size_t) {
                         if (ec)
@@ -123,7 +218,7 @@ void Session::send(const Message &msg) {
                     });
     // 记录发送数据
     Logger::instance().network_log(
-        Logger::OUT, socket.remote_endpoint().address().to_string(), msg_json,
+        Logger::OUT, socket().remote_endpoint().address().to_string(), msg_json,
         beast::buffers_to_string(buffer_.data()));
 }
 
@@ -162,8 +257,8 @@ void Session::on_ping_sent(beast::error_code ec) {
 
 void Session::start_pong_timeout_timer() {
     pong_timeout_timer_.expires_after(std::chrono::seconds(5));
-    pong_timeout_timer_.async_wait(
-        beast::bind_front_handler(&Session::on_pong_timeout, shared_from_this()));
+    pong_timeout_timer_.async_wait(beast::bind_front_handler(
+        &Session::on_pong_timeout, shared_from_this()));
 }
 
 void Session::on_pong_timeout(beast::error_code ec) {

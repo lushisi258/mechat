@@ -20,6 +20,8 @@ Server::Server(asio::io_context &ioc, nlohmann::json config)
       mongo_pool(config_["database"]["mongo"]["uri"].get<std::string>()) {
     // 载入证书
     load_server_certificate();
+    // 初始化 session_manager 单例
+    SessionManager::initialize(config_);
     // 启动服务器
     start();
 }
@@ -39,8 +41,10 @@ void Server::start() {
 }
 
 void Server::do_accept() {
-    auto session = std::make_shared<Session>(io_context_, ssl_context_);
-    acceptor_.async_accept(session->Socket(), [this, session](const auto &ec) {
+    auto session = std::make_shared<Session>(
+        io_context_, ssl_context_, mysql_pool, redis_pool, mongo_pool);
+    // 异步接受新连接，并绑定到 session 的 socket
+    acceptor_.async_accept(session->socket(), [this, session](const auto &ec) {
         handle_accept(session, ec);
     });
 }
@@ -51,6 +55,12 @@ void Server::handle_accept(std::shared_ptr<Session> session,
         session->start();
     }
     do_accept();
+}
+
+void Server::stop() {
+    acceptor_.close();
+    // 关闭所有活跃 Session
+    SessionManager::get_instance().shutdown();
 }
 
 } // namespace IM

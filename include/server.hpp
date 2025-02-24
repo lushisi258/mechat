@@ -1,6 +1,7 @@
 // server.hpp
 #pragma once
 #include "database_pool.hpp"
+#include "session_manager.hpp"
 #include "session.hpp"
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -16,6 +17,7 @@ class Server {
     Server(asio::io_context &ioc, nlohmann::json config);
     // 启动服务器
     void start();
+    void stop();
 
   private:
     // 加载证书
@@ -26,7 +28,7 @@ class Server {
     void do_accept();
     // 处理新连接
     void handle_accept(std::shared_ptr<Session> session,
-                      const boost::system::error_code &error);
+                       const boost::system::error_code &error);
 
     nlohmann::json config_;
     asio::io_context &io_context_;

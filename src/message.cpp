@@ -2,22 +2,25 @@
 #include "../include/message.hpp"
 #include <chrono>
 
-using json = nlohmann::json;
-
 namespace IM {
 
-Message Message::FromJson(const std::string &json_str) {
-    auto j = json::parse(json_str);
-    return {static_cast<MsgType>(j["type"].get<int>()),
-            j["sender"],
-            j["receiver"],
-            j["timestamp"],
-            j["content"],
-            j["meta"]};
+Message Message::from_json(const std::string &json_str) {
+    auto j = nlohmann::json::parse(json_str);
+
+    // 使用默认值处理缺失的数据
+    MsgType type = j.value("type", MsgType::Text);
+    std::string sender = j.value("sender", "");
+    std::string receiver = j.value("receiver", "");
+    int64_t timestamp = j.value("timestamp", 0);
+    std::string content = j.value("content", "");
+    std::string meta = j.value("meta", "");
+
+    return {
+        static_cast<MsgType>(type), sender, receiver, timestamp, content, meta};
 }
 
-std::string Message::ToJson() const {
-    json j;
+std::string Message::to_json() const {
+    nlohmann::json j;
     j["type"] = static_cast<int>(type);
     j["sender"] = sender;
     j["receiver"] = receiver;
@@ -26,4 +29,5 @@ std::string Message::ToJson() const {
     j["meta"] = meta;
     return j.dump();
 }
+
 } // namespace IM

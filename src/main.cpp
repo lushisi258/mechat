@@ -30,8 +30,8 @@ int main() {
         }
 
         // 初始化日志系统
-        IM::Logger::init(IM::Logger::INFO, IM::Logger::DEBUG,
-                         "logs/network.log");
+        IM::Logger::init(IM::Logger::WARNING, IM::Logger::DEBUG,
+                         "/home/lushisi/projects/mechat/logs/network.log");
 
         // 启动服务器
         boost::asio::io_context ioc;

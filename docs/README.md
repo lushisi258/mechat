@@ -12,17 +12,19 @@ mechat/
 │   │── DATABASE.md 
 │   │── README.md
 │── include/                # 头文件目录
-│   │── main.hpp 
-│   │── message.hpp 
+│   │── common.hpp
+│   │── database_pool.hpp
 │   │── logger.hpp
+│   │── message.hpp 
 │   │── server.hpp        
 │   │── session_manager.hpp 
 │   │── session.hpp
 │── logs/                   # 服务器日志文件存放目录   
 │── src/
+│   │── database_pool.cpp   # 数据库连接池
+│   │── logger.cpp          # 网络日志记录
 │   │── main.cpp            # 入口文件，启动 WebSocket 服务器
 │   │── message.cpp         # 消息结构体 实现
-│   │── logger.cpp  # 网络日志记录
 │   │── server.cpp          # 服务器核心逻辑
 │   │── session_manager.cpp # 管理 session 会话
 │   │── session.cpp         # WebSocket 会话管理
@@ -64,9 +66,9 @@ mechat/
    - 🟢数据库连接池
 
 2. **用户管理**
-   - 🔴注册/登录/注销
-   - 🔴密码安全存储（bcrypt/PBKDF2算法）
-   - 🔴会话管理（JWT令牌机制）
+   - 🟢注册/登录/注销
+   - 🟢密码安全存储
+   - 🟢会话管理（JWT令牌机制）
 
 3. **基础关系网络**
    - 🔴好友添加/删除/黑名单功能
