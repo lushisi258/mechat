@@ -12,6 +12,7 @@
   - `receiver`: 接收者uid
   - `timestamp`: 发送时间戳
   - `content`: 文本内容
+
 - 消息格式:
 
     ```json
@@ -32,7 +33,9 @@
   - `type`: `type`为`4`代表是登录消息
   - `sender`: 账号（email_addr）
   - `meta`: 密码
+  - `token`: 返回消息中为 access token
   - `timestamp`: 发送时间戳
+
 - 消息格式:
 
     ```json
@@ -50,8 +53,9 @@
     ```json
     {
         "type": 4,
-        "content": "Login success",
-        "meta": "jwt_content",
+        "sender": "user_nickname",
+        "meta": "refresh token",
+        "token": "access token",
         "timestamp": $timestamp
     }
     ```
@@ -75,6 +79,7 @@
   - `sender`: 注册者手机号码
   - `meta`: 注册密码
   - `timestamp`: 发送时间戳
+
 - 消息格式:
 
     ```json
@@ -93,8 +98,8 @@
         ```json
     {
         "type": 4,
-        "content": "Login success",
-        "meta": "jwt_content",
+        "meta": "refresh token",
+        "token": "access token",
         "timestamp": $timestamp
     }
     ```
@@ -110,3 +115,27 @@
     ```
 
 ---
+
+## 刷新 `access token`
+
+- 参数说明:
+  - `meta`: refresh token
+
+- 发送消息：
+
+  ```json
+  {
+    "sender": "user email",
+    "meta": "refresh token",
+    "timestamp": $timestamp
+  }
+  ```
+
+- 返回消息：
+
+  ```json
+  {
+    "token": "access token",
+    "timestamp": $timestamp
+  }
+  ```

@@ -1,6 +1,6 @@
 # 即时通讯系统数据库表设计
 
-## MySQL数据库表
+## MySQL数据库
 
 ### 1. 用户表（`users`）
 
@@ -27,6 +27,10 @@
 | `status`     | `TINYINT`     | 好友关系状态，0：待确认，1：已是好友 |
 | `created_at` | `TIMESTAMP`   | 添加好友时间，默认当前时间   |
 | `unique_friendship` | `UNIQUE` | 约束用户与好友的唯一性       |
+
+---
+
+## Redis数据库
 
 ---
 
@@ -59,6 +63,10 @@
 
 ---
 
+## MongoDB数据库
+
+---
+
 ### 6. 消息表（`messages`）
 
 | 字段             | 类型          | 说明                       |
@@ -80,13 +88,5 @@
 - **`conversations` 表**：存储所有的会话记录，支持单聊和群聊。
 - **`conversation_users` 表**：存储会话参与者，支持群聊成员管理。
 - **`messages` 表**：存储所有消息记录。
-
----
-
-## Redis数据库表
-
----
-
-## MongoDB数据库表
 
 ---

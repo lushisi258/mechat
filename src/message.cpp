@@ -14,9 +14,15 @@ Message Message::from_json(const std::string &json_str) {
     int64_t timestamp = j.value("timestamp", 0);
     std::string content = j.value("content", "");
     std::string meta = j.value("meta", "");
+    std::string token = j.value("token", "");
 
-    return {
-        static_cast<MsgType>(type), sender, receiver, timestamp, content, meta};
+    return {static_cast<MsgType>(type),
+            sender,
+            receiver,
+            timestamp,
+            content,
+            meta,
+            token};
 }
 
 std::string Message::to_json() const {
@@ -27,6 +33,7 @@ std::string Message::to_json() const {
     j["timestamp"] = timestamp;
     j["content"] = content;
     j["meta"] = meta;
+    j["token"] = token;
     return j.dump();
 }
 

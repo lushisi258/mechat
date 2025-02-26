@@ -118,35 +118,23 @@ void Session::handle_message(const Message &msg) {
 }
 
 int Session::recv_register_msg(const Message &msg) {
-    // 对密码进行哈希处理
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char *>(msg.meta.c_str()),
-           msg.meta.size(), hash);
-    // 将哈希结果转换为十六进制字符串
     std::string password_hash;
-    char buf[3];
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-        snprintf(buf, sizeof(buf), "%02x", hash[i]);
-        password_hash += buf;
-    }
+    password_hash = do_hash(msg.meta);
 
     // 查询语句
     auto conn = mysql_pool_.get_connection();
     std::string query =
-        "INSERT INTO users (email, password_hash) "
-        "VALUES (?, ?) "
-        "RETURNING id"; // 使用RETURNING语法直接获取插入的ID（需MySQL 8.0+）
+        "INSERT INTO users (email, password_hash) VALUES (?, ?)";
 
     MYSQL_STMT *stmt = mysql_stmt_init(conn.get());
     if (!stmt)
         return EXIT_FAILURE;
 
-    // 自动释放资源
     auto stmt_guard = std::unique_ptr<MYSQL_STMT, decltype(&mysql_stmt_close)>(
         stmt, mysql_stmt_close);
 
     if (mysql_stmt_prepare(stmt, query.c_str(), query.size())) {
-        std::cerr << "Prepare error: " << mysql_error(conn.get()) << std::endl;
+        std::cerr << "Prepare error: " << mysql_stmt_error(stmt) << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -155,57 +143,182 @@ int Session::recv_register_msg(const Message &msg) {
     MYSQL_BIND params[2] = {};
     params[0].buffer_type = MYSQL_TYPE_STRING;
     params[0].buffer = email.data();
-    params[0].buffer_length = email.length();
+    params[0].buffer_length = email.size();
 
     params[1].buffer_type = MYSQL_TYPE_STRING;
     params[1].buffer = password_hash.data();
-    params[1].buffer_length = password_hash.length();
+    params[1].buffer_length = password_hash.size();
 
     if (mysql_stmt_bind_param(stmt, params)) {
-        std::cerr << "Bind error" << std::endl;
+        std::cerr << "Bind error: " << mysql_stmt_error(stmt) << std::endl;
         return EXIT_FAILURE;
     }
 
-    // 执行并处理结果
+    // 执行插入
     if (mysql_stmt_execute(stmt)) {
-        // 处理唯一性约束错误（错误码1062）
         if (mysql_errno(conn.get()) == 1062) {
             std::cerr << "Email already exists: " << email << std::endl;
             return EXIT_FAILURE;
         }
-        std::cerr << "Execute error: " << mysql_error(conn.get()) << std::endl;
+        std::cerr << "Execute error: " << mysql_stmt_error(stmt) << std::endl;
         return EXIT_FAILURE;
     }
 
-    // 获取插入的ID
-    MYSQL_BIND result;
-    int user_id = -1;
-    memset(&result, 0, sizeof(result));
-    result.buffer_type = MYSQL_TYPE_LONG;
-    result.buffer = &user_id;
-
-    mysql_stmt_bind_result(stmt, &result);
-    mysql_stmt_fetch(stmt);
+    // 获取插入的 ID
+    user_id_ = mysql_insert_id(conn.get());
+    if (user_id_ <= 0) {
+        std::cerr << "Failed to get last insert ID" << std::endl;
+        return EXIT_FAILURE;
+    }
 
     // 会话管理
-    SessionManager::get_instance().add(shared_from_this(), user_id);
+    SessionManager::get_instance().add(shared_from_this(), user_id_);
 
     // 发送响应
     Message response_msg{};
+    std::pair<std::string, std::string> tokens;
+    tokens = SessionManager::get_instance().generate_jwt(email);
+
     response_msg.type = MsgType::Login;
-    response_msg.meta = "Login success";
-    response_msg.content =
-        SessionManager::get_instance().generate_jwt(msg.sender);
     response_msg.timestamp =
         std::chrono::system_clock::now().time_since_epoch().count();
+    response_msg.meta = tokens.first;
+    response_msg.token = tokens.second;
+
     send(response_msg);
 
     return EXIT_SUCCESS;
 }
 
 int Session::recv_login_msg(const Message &msg) {
-    std::cout << "recv login" << std::endl;
-    return 0;
+    // 处理密码
+    std::string password_hash = do_hash(msg.meta);
+
+    // 获取连接，构造查询语句
+    auto conn = mysql_pool_.get_connection();
+    std::string query = "SELECT id, nickname "
+                        " FROM users "
+                        " WHERE email = ? AND password_hash = ? "
+                        " LIMIT 1";
+
+    // 初始化MYSQL模型
+    MYSQL_STMT *stmt = mysql_stmt_init(conn.get());
+    if (!stmt)
+        return EXIT_FAILURE;
+
+    // 创建锁，预处理查询
+    auto stmt_guard = std::unique_ptr<MYSQL_STMT, decltype(&mysql_stmt_close)>(
+        stmt, mysql_stmt_close);
+    if (mysql_stmt_prepare(stmt, query.c_str(), query.size())) {
+        std::string error_info =
+            "Prepare error: " + std::string(mysql_stmt_error(stmt));
+        Logger::instance().bug_log(error_info);
+        return EXIT_FAILURE;
+    }
+
+    // 参数绑定
+    std::string email = msg.sender;
+    MYSQL_BIND params[2] = {};
+    params[0].buffer_type = MYSQL_TYPE_STRING;
+    params[0].buffer = email.data();
+    params[0].buffer_length = email.size();
+
+    params[1].buffer_type = MYSQL_TYPE_STRING;
+    params[1].buffer = password_hash.data();
+    params[1].buffer_length = password_hash.size();
+
+    if (mysql_stmt_bind_param(stmt, params)) {
+        std::string error_info =
+            "Bind error: " + std::string(mysql_stmt_error(stmt));
+        Logger::instance().bug_log(error_info);
+        return EXIT_FAILURE;
+    }
+
+    // 执行查询
+    if (mysql_stmt_execute(stmt)) {
+        std::string error_info =
+            "Execute error: " + std::string(mysql_stmt_error(stmt));
+        Logger::instance().bug_log(error_info);
+        return EXIT_FAILURE;
+    }
+
+    // 获取结果
+    std::string nickname;
+
+    MYSQL_BIND result[2] = {};
+    result[0].buffer_type = MYSQL_TYPE_BIT;
+    result[0].buffer = &user_id_;
+
+    result[1].buffer_type = MYSQL_TYPE_STRING;
+    result[1].buffer = reinterpret_cast<char *>(&nickname);
+    result[1].buffer_length = nickname.capacity();
+
+    if (mysql_stmt_bind_result(stmt, result)) {
+        std::string error_info =
+            "Bind error: " + std::string(mysql_stmt_error(stmt));
+        Logger::instance().bug_log(error_info);
+        return EXIT_FAILURE;
+    }
+
+    if (mysql_stmt_store_result(stmt)) {
+        std::string error_info =
+            "Store error: " + std::string(mysql_stmt_error(stmt));
+        Logger::instance().bug_log(error_info);
+        return EXIT_FAILURE;
+    }
+
+    if (mysql_stmt_fetch(stmt)) {
+        std::string error_info = "No matching user found";
+        Logger::instance().log(Logger::INFO, error_info);
+        return EXIT_FAILURE;
+    }
+
+    std::string login_info = "User: " + email + " Login success";
+    Logger::instance().log(Logger::INFO, login_info);
+
+    // 会话管理
+    SessionManager::get_instance().add(shared_from_this(), user_id_);
+
+    // 发送响应
+    Message response_msg{};
+    std::pair<std::string, std::string> tokens;
+    // tokens.first 是 refresh token, tokens.second 是 access token
+    tokens = SessionManager::get_instance().generate_jwt(email);
+
+    response_msg.type = MsgType::Login;
+    response_msg.sender = nickname;
+    response_msg.timestamp =
+        std::chrono::system_clock::now().time_since_epoch().count();
+    response_msg.meta = tokens.first;
+    response_msg.token = tokens.second;
+
+    send(response_msg);
+
+    return EXIT_SUCCESS;
+}
+
+int Session::recv_fresh_access_token_msg(const Message &msg) {
+    std::string access_token;
+    try {
+        access_token = SessionManager::get_instance().generate_access_jwt(
+            msg.sender, msg.meta);
+    } catch (const std::exception &e) {
+        std::string error_info =
+            "Fresh access token failed: " + std::string(e.what());
+        Logger::instance().log(Logger::ERROR, error_info);
+        return EXIT_FAILURE;
+    }
+
+    Message response_msg{};
+
+    response_msg.type = MsgType::UpdateJWT;
+    response_msg.timestamp =
+        std::chrono::system_clock::now().time_since_epoch().count();
+    response_msg.token = access_token;
+
+    send(response_msg);
+
+    return EXIT_SUCCESS;
 }
 
 void Session::send(const Message &msg) {
@@ -293,6 +406,21 @@ void Session::close() {
     }
     heartbeat_timer_.cancel();
     pong_timeout_timer_.cancel();
+}
+
+std::string Session::do_hash(const std::string &password) {
+    // 对密码进行哈希处理
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char *>(password.c_str()),
+           password.size(), hash);
+    // 将哈希结果转换为十六进制字符串
+    std::string password_hash;
+    char buf[3];
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        snprintf(buf, sizeof(buf), "%02x", hash[i]);
+        password_hash += buf;
+    }
+    return password_hash;
 }
 
 } // namespace IM

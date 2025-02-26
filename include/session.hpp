@@ -42,6 +42,7 @@ class Session : public std::enable_shared_from_this<Session> {
     // int recv_text_msg(const Message &msg);
     int recv_register_msg(const Message &msg);
     int recv_login_msg(const Message &msg);
+    int recv_fresh_access_token_msg(const Message &msg);
     // int recv_logout_msg(const Message &msg);
     // SSL 握手
     void do_handshake();
@@ -53,6 +54,8 @@ class Session : public std::enable_shared_from_this<Session> {
     void start_pong_timeout_timer();
     void on_pong_timeout(beast::error_code ec);
     void on_pong_received();
+    // 其他功能函数
+    std::string do_hash(const std::string &password);
 };
 
 } // namespace IM
