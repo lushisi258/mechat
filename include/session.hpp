@@ -16,7 +16,7 @@ class Session : public std::enable_shared_from_this<Session> {
   public:
     // 使用 SSL 加密的 WebSocket 流
     boost::beast::websocket::stream<boost::asio::ssl::stream<tcp::socket>> ws_;
-    int user_id_;
+    std::string user_id_ = "";
     beast::flat_buffer buffer_;
     asio::steady_timer heartbeat_timer_;
     asio::steady_timer pong_timeout_timer_;
@@ -56,6 +56,10 @@ class Session : public std::enable_shared_from_this<Session> {
     void on_pong_received();
     // 其他功能函数
     std::string do_hash(const std::string &password);
+    // 生成时间戳
+    int64_t generate_timestamp();
+    // 生成 UUID
+    std::string generate_uuid();
 };
 
 } // namespace IM

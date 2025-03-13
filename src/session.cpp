@@ -73,7 +73,12 @@ void Session::on_read(beast::error_code ec, std::size_t bytes) {
             Logger::IN, socket().remote_endpoint().address().to_string(), raw,
             beast::buffers_to_string(buffer_.data()));
 
-        auto msg = Message::from_json(beast::buffers_to_string(buffer_.data()));
+        // 读取缓冲区的json并转化为消息类型
+        std::string response = beast::buffers_to_string(buffer_.data());
+        json j = json::parse(response);
+        Message msg;
+        from_json(msg, j);
+
         handle_message(msg);
 
     } catch (const std::exception &e) {
@@ -87,45 +92,92 @@ void Session::on_read(beast::error_code ec, std::size_t bytes) {
 }
 
 void Session::handle_message(const Message &msg) {
-    switch (msg.type) {
-    case MsgType::Text:
-        if (msg.receiver == "broadcast") {
-            SessionManager::get_instance().broadcast(msg);
-        } else if (user_id_) {
-            SessionManager::get_instance().send_to_user(user_id_, msg);
+    // 打印消息
+    std::cout << "收到消息内容: " << msg.content.data.dump() << std::endl;
+
+    switch (msg.type) { // 主类型判断
+
+    case MsgType::Data:             // 数据消息分支
+        switch (msg.content.type) { // 内容子类型判断
+        case ContentType::Text:
+            if (msg.receiver_id == "broadcast") { // 修正字段名为receiver_id
+                SessionManager::get_instance().broadcast(msg);
+            } else if (!user_id_.empty()) {
+                SessionManager::get_instance().send_to_user(msg.receiver_id,
+                                                            msg);
+            }
+            break;
+        case ContentType::Image:
+            // 处理图片消息
+            // handle_image_message(msg);
+            break;
+        case ContentType::File:
+            // 文件处理
+            // handle_file_transfer(msg);
+            break;
+        default:
+            std::cerr << "未知的数据消息类型: "
+                      << static_cast<int>(msg.content.type) << std::endl;
         }
         break;
-    case MsgType::Image:
+
+    case MsgType::Control: // 控制消息分支
+        switch (msg.content.type) {
+        case ContentType::Heartbeat:
+            // 心跳处理保持原有逻辑
+            heartbeat_timer_.cancel();
+            start_heartbeat_timer();
+            break;
+        case ContentType::Login:
+            // 带JWT的认证逻辑
+            if (msg.jwt_token.has_value()) {
+                recv_login_msg(msg);
+            } else {
+                // send_error("缺少认证令牌");
+            }
+            break;
+        default:
+            std::cerr << "未知的控制消息类型: "
+                      << static_cast<int>(msg.content.type) << std::endl;
+        }
         break;
-    case MsgType::Heartbeat:
-        heartbeat_timer_.cancel();
-        start_heartbeat_timer();
+
+    case MsgType::System: // 系统消息分支
+        // 系统状态通知处理
+        if (msg.metadata.status == "emergency") {
+            // handle_emergency_notification(msg);
+        }
         break;
-    case MsgType::Login:
-        // 实现认证逻辑
-        recv_login_msg(msg);
-        break;
-    case MsgType::Register:
-        // 处理注册消息
-        recv_register_msg(msg);
-        break;
-    case MsgType::StatusNotify:
-        break;
+
     default:
-        // 错误的消息类型
-        std::cout << "收到错误的消息类型" << std::endl;
+        // 错误处理增加日志细节
+        std::cerr << "非法主消息类型: " << static_cast<int>(msg.type)
+                  << " 消息ID: " << msg.message_id << std::endl;
+        // send_error("非法消息类型", msg.message_id);
     }
 }
 
 int Session::recv_register_msg(const Message &msg) {
-    std::string password_hash;
-    password_hash = do_hash(msg.meta);
+    // 1. 参数有效性检查
+    if (!msg.content.data.contains("email") ||
+        !msg.content.data.contains("password")) {
+        // send_error("注册信息不完整", msg.message_id);
+        return EXIT_FAILURE;
+    }
 
-    // 查询语句
+    // 2. 从content.data获取注册信息
+    std::string email = msg.content.data["email"].get<std::string>();
+    std::string password = msg.content.data["password"].get<std::string>();
+
+    // 3. 密码哈希处理
+    std::string password_hash = do_hash(password);
+
+    // 4. 数据库操作
     auto conn = mysql_pool_.get_connection();
-    std::string query =
+    constexpr std::string_view query =
         "INSERT INTO users (email, password_hash) VALUES (?, ?)";
 
+    // 5. 使用RAII管理语句句柄
     MYSQL_STMT *stmt = mysql_stmt_init(conn.get());
     if (!stmt)
         return EXIT_FAILURE;
@@ -133,66 +185,83 @@ int Session::recv_register_msg(const Message &msg) {
     auto stmt_guard = std::unique_ptr<MYSQL_STMT, decltype(&mysql_stmt_close)>(
         stmt, mysql_stmt_close);
 
-    if (mysql_stmt_prepare(stmt, query.c_str(), query.size())) {
-        std::cerr << "Prepare error: " << mysql_stmt_error(stmt) << std::endl;
+    // 6. 准备语句
+    if (mysql_stmt_prepare(stmt, query.data(), query.size())) {
+        // log_error("Prepare error: ", mysql_stmt_error(stmt));
         return EXIT_FAILURE;
     }
 
-    // 参数绑定
-    std::string email = msg.sender;
+    // 7. 参数绑定
     MYSQL_BIND params[2] = {};
+
+    // Email参数
     params[0].buffer_type = MYSQL_TYPE_STRING;
     params[0].buffer = email.data();
-    params[0].buffer_length = email.size();
+    params[0].buffer_length = email.length();
 
+    // 密码哈希参数
     params[1].buffer_type = MYSQL_TYPE_STRING;
     params[1].buffer = password_hash.data();
-    params[1].buffer_length = password_hash.size();
+    params[1].buffer_length = password_hash.length();
 
     if (mysql_stmt_bind_param(stmt, params)) {
-        std::cerr << "Bind error: " << mysql_stmt_error(stmt) << std::endl;
+        // log_error("Bind error: ", mysql_stmt_error(stmt));
         return EXIT_FAILURE;
     }
 
-    // 执行插入
+    // 8. 执行插入
     if (mysql_stmt_execute(stmt)) {
-        if (mysql_errno(conn.get()) == 1062) {
-            std::cerr << "Email already exists: " << email << std::endl;
-            return EXIT_FAILURE;
+        const auto err_no = mysql_errno(conn.get());
+        if (err_no == 1062) { // Duplicate entry
+            // send_error("邮箱已存在", msg.message_id);
+        } else {
+            // log_error("Execute error: ", mysql_stmt_error(stmt));
         }
-        std::cerr << "Execute error: " << mysql_stmt_error(stmt) << std::endl;
         return EXIT_FAILURE;
     }
 
-    // 获取插入的 ID
-    user_id_ = mysql_insert_id(conn.get());
-    if (user_id_ <= 0) {
-        std::cerr << "Failed to get last insert ID" << std::endl;
+    // 9. 获取用户ID
+    user_id_ = std::to_string(mysql_insert_id(conn.get()));
+    if (user_id_.empty()) {
+        // send_error("注册信息保存失败", msg.message_id);
         return EXIT_FAILURE;
     }
 
-    // 会话管理
-    SessionManager::get_instance().add(shared_from_this(), user_id_);
+    // 10. 会话管理
+    SessionManager::get_instance().add(user_id_, shared_from_this());
 
-    // 发送响应
+    // 11. 构造响应消息
     Message response_msg{};
-    std::pair<std::string, std::string> tokens;
-    tokens = SessionManager::get_instance().generate_jwt(email);
+    response_msg.message_id = generate_uuid(); // 需要实现UUID生成
+    response_msg.type = MsgType::Control;
+    response_msg.content.type = ContentType::Login;
+    response_msg.timestamp = generate_timestamp();
 
-    response_msg.type = MsgType::Login;
-    response_msg.timestamp =
-        std::chrono::system_clock::now().time_since_epoch().count();
-    response_msg.meta = tokens.first;
-    response_msg.token = tokens.second;
+    // 12. 生成令牌
+    auto [access_token, refresh_token] =
+        SessionManager::get_instance().generate_jwt(email);
 
+    // 13. 设置元数据
+    response_msg.metadata.status = "success";
+    response_msg.metadata.reply_to = msg.message_id;
+
+    // 14. 设置认证令牌
+    response_msg.jwt_token = access_token;
+
+    // 15. 发送响应
     send(response_msg);
 
     return EXIT_SUCCESS;
 }
 
 int Session::recv_login_msg(const Message &msg) {
+    if (!msg.content.data.contains("email") ||
+        !msg.content.data.contains("password")) {
+        // send_error("登录信息不完整", msg.message_id);
+        return EXIT_FAILURE;
+    }
     // 处理密码
-    std::string password_hash = do_hash(msg.meta);
+    std::string password_hash = do_hash(msg.content.data["password"]);
 
     // 获取连接，构造查询语句
     auto conn = mysql_pool_.get_connection();
@@ -217,7 +286,7 @@ int Session::recv_login_msg(const Message &msg) {
     }
 
     // 参数绑定
-    std::string email = msg.sender;
+    std::string email = msg.content.data["email"];
     MYSQL_BIND params[2] = {};
     params[0].buffer_type = MYSQL_TYPE_STRING;
     params[0].buffer = email.data();
@@ -277,20 +346,45 @@ int Session::recv_login_msg(const Message &msg) {
     Logger::instance().log(Logger::INFO, login_info);
 
     // 会话管理
-    SessionManager::get_instance().add(shared_from_this(), user_id_);
+    SessionManager::get_instance().add(user_id_, shared_from_this());
 
     // 发送响应
     Message response_msg{};
-    std::pair<std::string, std::string> tokens;
-    // tokens.first 是 refresh token, tokens.second 是 access token
-    tokens = SessionManager::get_instance().generate_jwt(email);
+    response_msg.message_id = generate_uuid();      // 生成唯一消息ID
+    response_msg.type = MsgType::Control;           // 主类型为控制消息
+    response_msg.content.type = ContentType::Login; // 子类型为登录
 
-    response_msg.type = MsgType::Login;
-    response_msg.sender = nickname;
-    response_msg.timestamp =
-        std::chrono::system_clock::now().time_since_epoch().count();
-    response_msg.meta = tokens.first;
-    response_msg.token = tokens.second;
+    // 设置发送者信息（根据新UserInfo结构）
+    response_msg.sender = UserInfo{
+        .user_id = user_id_,  // 从会话获取用户ID
+        .username = nickname, // 使用传入的昵称
+        .avatar = ""          // 默认空头像
+    };
+
+    // 设置时间戳
+    response_msg.timestamp = generate_timestamp();
+
+    // 生成JWT令牌对
+    auto [access_token, refresh_token] =
+        SessionManager::get_instance().generate_jwt(user_id_);
+    // 访问令牌
+    response_msg.jwt_token = access_token;
+    // 刷新令牌
+    response_msg.content.data["refresh_token"] = refresh_token;
+
+    // 设置元数据
+    response_msg.metadata = {
+        .status = "auth_success",   // 认证状态
+        .reply_to = msg.message_id, // 关联原始消息ID
+        .is_encrypted = false       // 默认不加密
+    };
+
+    // 在content.data中添加补充信息
+    response_msg.content.data = {
+        {"user_info",
+         {{"user_id", response_msg.sender.user_id}, {"nickname", nickname}}},
+        {"token_expire", 3600} // 令牌有效期示例
+    };
 
     send(response_msg);
 
@@ -298,32 +392,32 @@ int Session::recv_login_msg(const Message &msg) {
 }
 
 int Session::recv_fresh_access_token_msg(const Message &msg) {
-    std::string access_token;
-    try {
-        access_token = SessionManager::get_instance().generate_access_jwt(
-            msg.sender, msg.meta);
-    } catch (const std::exception &e) {
-        std::string error_info =
-            "Fresh access token failed: " + std::string(e.what());
-        Logger::instance().log(Logger::ERROR, error_info);
-        return EXIT_FAILURE;
-    }
+    // std::string access_token;
+    // try {
+    //     access_token = SessionManager::get_instance().generate_access_jwt(
+    //         msg.sender, msg.meta);
+    // } catch (const std::exception &e) {
+    //     std::string error_info =
+    //         "Fresh access token failed: " + std::string(e.what());
+    //     Logger::instance().log(Logger::ERROR, error_info);
+    //     return EXIT_FAILURE;
+    // }
 
-    Message response_msg{};
+    // Message response_msg{};
 
-    response_msg.type = MsgType::UpdateJWT;
-    response_msg.timestamp =
-        std::chrono::system_clock::now().time_since_epoch().count();
-    response_msg.token = access_token;
+    // response_msg.type = MsgType::UpdateJWT;
+    // response_msg.timestamp =
+    //     std::chrono::system_clock::now().time_since_epoch().count();
+    // response_msg.token = access_token;
 
-    send(response_msg);
+    // send(response_msg);
 
     return EXIT_SUCCESS;
 }
 
 void Session::send(const Message &msg) {
     // 将消息转换为json格式
-    std::string msg_json = msg.to_json();
+    std::string msg_json = to_json(msg);
     ws_.async_write(asio::buffer(msg_json),
                     [self = shared_from_this()](beast::error_code ec, size_t) {
                         if (ec)
@@ -421,6 +515,44 @@ std::string Session::do_hash(const std::string &password) {
         password_hash += buf;
     }
     return password_hash;
+}
+
+// 生成时间戳
+int64_t Session::generate_timestamp() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+        .count();
+}
+
+std::string Session::generate_uuid() {
+    // 1. 获取时间戳和时钟序列
+    const auto now = std::chrono::system_clock::now();
+    const auto since_epoch = now.time_since_epoch();
+    const uint64_t timestamp =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(since_epoch)
+            .count();
+
+    // 2. 生成时钟序列（基于senderid哈希）
+    static std::unordered_map<std::string, uint16_t> clock_seq_map;
+    uint16_t clock_seq = std::hash<std::string>{}(user_id_) % 0x3FFF;
+
+    // 3. 生成节点ID（基于senderid）
+    uint8_t node_id[6];
+    std::copy_n(user_id_.begin(), std::min(6, (int)user_id_.size()), node_id);
+
+    // 4. 组合成UUID v1
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(8)
+       << ((timestamp >> 32) & 0xFFFFFFFF) << "-" << std::setw(4)
+       << ((timestamp >> 16) & 0xFFFF) << "-" << std::setw(4)
+       << ((timestamp & 0x0FFF) | 0x1000) << "-"                 // Version 1
+       << std::setw(4) << ((clock_seq & 0x3FFF) | 0x8000) << "-" // Variant
+       << std::setw(12) << std::hex << static_cast<int>(node_id[0])
+       << static_cast<int>(node_id[1]) << static_cast<int>(node_id[2])
+       << static_cast<int>(node_id[3]) << static_cast<int>(node_id[4])
+       << static_cast<int>(node_id[5]);
+
+    return ss.str();
 }
 
 } // namespace IM

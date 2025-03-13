@@ -1,8 +1,35 @@
-# MeChat API 文档
+# MeChat API 文档 (v2)
 
 - 服务器 URL: `wss://pc.lushisi.top:2233`
+- 消息协议版本：2024.1 (基于强类型消息结构)
 
 ---
+
+## 协议层级结构
+
+  ```json
+  {
+    "message_id": "uuidv4",
+    "type": "消息主类型: data(1)/control(2)/system(3)",
+    "sender": {
+      "user_id": "用户唯一标识",
+      "username": "显示名称",
+      "avatar": "头像URL"
+    },
+    "receiver_id": "接收方ID",
+    "timestamp": 1672531200000,
+    "content": {
+      "type": "内容子类型: text(1)/image(2)/file(3)/login(4)/...",
+      "data": "具体内容结构"
+    },
+    "metadata": {
+      "status": "消息状态",
+      "reply_to": "回复消息ID",
+      "is_encrypted": false
+    },
+    "jwt_token": "鉴权令牌"
+  }
+  ```
 
 ## 纯文本消息
 

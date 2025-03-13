@@ -22,9 +22,10 @@ class SessionManager {
     SessionManager &operator=(const SessionManager &) = delete;
 
     // 会话管理
-    void add(std::shared_ptr<Session> session, int user_id);
-    void remove(int user_id);
-    void send_to_user(int user_id, const Message &msg);
+    void add(const std::string &user_id,
+             const std::shared_ptr<Session> session);
+    void remove(const std::string &user_id);
+    void send_to_user(const std::string &user_id, const Message &msg);
     void broadcast(const Message &msg);
 
     // 传入的 user 为用户的邮箱地址（即 msg.sender 部分的数据）
@@ -54,7 +55,8 @@ class SessionManager {
 
     nlohmann::json config_;
     std::mutex mutex_;
-    std::unordered_map<int, std::shared_ptr<Session>> sessions_;
+    // 存储会话的键值对
+    std::unordered_map<std::string, std::shared_ptr<Session>> sessions_;
 
     static std::unique_ptr<SessionManager, Deleter> instance_;
     static std::once_flag init_flag_;

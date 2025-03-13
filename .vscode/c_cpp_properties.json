@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "/usr/include",
                 "/usr/local/include/bsoncxx/v_noabi",
                 "/usr/local/include/mongocxx/v_noabi"
             ],

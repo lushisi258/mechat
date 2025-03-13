@@ -25,17 +25,19 @@ SessionManager &SessionManager::get_instance() {
 SessionManager::SessionManager(const nlohmann::json &config)
     : config_(config) {}
 
-void SessionManager::add(std::shared_ptr<Session> session, int user_id) {
+void SessionManager::add(const std::string &user_id,
+                         const std::shared_ptr<Session> session) {
     std::lock_guard<std::mutex> lock(mutex_);
     sessions_[user_id] = session;
 }
 
-void SessionManager::remove(const int user_id) {
+void SessionManager::remove(const std::string &user_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     sessions_.erase(user_id);
 }
 
-void SessionManager::send_to_user(const int user_id, const Message &msg) {
+void SessionManager::send_to_user(const std::string &user_id,
+                                  const Message &msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (auto it = sessions_.find(user_id); it != sessions_.end()) {
         it->second->send(msg);
