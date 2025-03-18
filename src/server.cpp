@@ -45,6 +45,7 @@ void Server::do_accept() {
         io_context_, ssl_context_, mysql_pool, redis_pool, mongo_pool);
     // 异步接受新连接，并绑定到 session 的 socket
     acceptor_.async_accept(session->socket(), [this, session](const auto &ec) {
+        std::cout << "Recv connection" << std::endl;
         handle_accept(session, ec);
     });
 }

@@ -95,9 +95,9 @@ void Session::handle_message(const Message &msg) {
     // 打印消息
     std::cout << "收到消息内容: " << msg.content.data.dump() << std::endl;
 
-    switch (msg.type) { // 主类型判断
-
-    case MsgType::Data:             // 数据消息分支
+    switch (msg.type) {
+    // 数据消息分支
+    case MsgType::Data:
         switch (msg.content.type) { // 内容子类型判断
         case ContentType::Text:
             if (msg.receiver_id == "broadcast") { // 修正字段名为receiver_id
@@ -121,20 +121,11 @@ void Session::handle_message(const Message &msg) {
         }
         break;
 
-    case MsgType::Control: // 控制消息分支
+    // 控制消息分支
+    case MsgType::Control:
         switch (msg.content.type) {
-        case ContentType::Heartbeat:
-            // 心跳处理保持原有逻辑
-            heartbeat_timer_.cancel();
-            start_heartbeat_timer();
-            break;
         case ContentType::Login:
-            // 带JWT的认证逻辑
-            if (msg.jwt_token.has_value()) {
-                recv_login_msg(msg);
-            } else {
-                // send_error("缺少认证令牌");
-            }
+            recv_login_msg(msg);
             break;
         default:
             std::cerr << "未知的控制消息类型: "
@@ -142,10 +133,17 @@ void Session::handle_message(const Message &msg) {
         }
         break;
 
-    case MsgType::System: // 系统消息分支
-        // 系统状态通知处理
-        if (msg.metadata.status == "emergency") {
-            // handle_emergency_notification(msg);
+    // 系统消息分支
+    case MsgType::System:
+        switch (msg.content.type) {
+        case ContentType::Heartbeat:
+            // 心跳处理保持原有逻辑
+            heartbeat_timer_.cancel();
+            start_heartbeat_timer();
+            break;
+        default:
+            std::cerr << "未知的控制消息类型: "
+                      << static_cast<int>(msg.content.type) << std::endl;
         }
         break;
 
@@ -232,7 +230,7 @@ int Session::recv_register_msg(const Message &msg) {
 
     // 11. 构造响应消息
     Message response_msg{};
-    response_msg.message_id = generate_uuid(); // 需要实现UUID生成
+    response_msg.message_id = generate_uuid();
     response_msg.type = MsgType::Control;
     response_msg.content.type = ContentType::Login;
     response_msg.timestamp = generate_timestamp();
@@ -312,16 +310,16 @@ int Session::recv_login_msg(const Message &msg) {
     }
 
     // 获取结果
-    std::string nickname;
+    std::string nickname = "";
 
     MYSQL_BIND result[2] = {};
-    result[0].buffer_type = MYSQL_TYPE_BIT;
+    result[0].buffer_type = MYSQL_TYPE_LONGLONG;
     result[0].buffer = &user_id_;
 
     result[1].buffer_type = MYSQL_TYPE_STRING;
-    result[1].buffer = reinterpret_cast<char *>(&nickname);
-    result[1].buffer_length = nickname.capacity();
+    result[1].buffer = &nickname;
 
+    std::cout << "bind" << std::endl;
     if (mysql_stmt_bind_result(stmt, result)) {
         std::string error_info =
             "Bind error: " + std::string(mysql_stmt_error(stmt));
@@ -329,6 +327,7 @@ int Session::recv_login_msg(const Message &msg) {
         return EXIT_FAILURE;
     }
 
+    std::cout << "store" << std::endl;
     if (mysql_stmt_store_result(stmt)) {
         std::string error_info =
             "Store error: " + std::string(mysql_stmt_error(stmt));
@@ -336,11 +335,13 @@ int Session::recv_login_msg(const Message &msg) {
         return EXIT_FAILURE;
     }
 
+    std::cout << "fetch" << std::endl;
     if (mysql_stmt_fetch(stmt)) {
         std::string error_info = "No matching user found";
         Logger::instance().log(Logger::INFO, error_info);
         return EXIT_FAILURE;
     }
+    std::cout << "user_id:" << user_id_ << std::endl;
 
     std::string login_info = "User: " + email + " Login success";
     Logger::instance().log(Logger::INFO, login_info);
@@ -354,37 +355,24 @@ int Session::recv_login_msg(const Message &msg) {
     response_msg.type = MsgType::Control;           // 主类型为控制消息
     response_msg.content.type = ContentType::Login; // 子类型为登录
 
-    // 设置发送者信息（根据新UserInfo结构）
+    // 设置发送者信息
     response_msg.sender = UserInfo{
         .user_id = user_id_,  // 从会话获取用户ID
         .username = nickname, // 使用传入的昵称
         .avatar = ""          // 默认空头像
     };
-
     // 设置时间戳
     response_msg.timestamp = generate_timestamp();
-
     // 生成JWT令牌对
-    auto [access_token, refresh_token] =
-        SessionManager::get_instance().generate_jwt(user_id_);
+    std::pair<std::string, std::string> token;
+    token = SessionManager::get_instance().generate_jwt(user_id_);
     // 访问令牌
-    response_msg.jwt_token = access_token;
+    response_msg.jwt_token = token.second;
     // 刷新令牌
-    response_msg.content.data["refresh_token"] = refresh_token;
-
+    response_msg.content.data["refresh_token"] = token.first;
     // 设置元数据
     response_msg.metadata = {
-        .status = "auth_success",   // 认证状态
-        .reply_to = msg.message_id, // 关联原始消息ID
-        .is_encrypted = false       // 默认不加密
-    };
-
-    // 在content.data中添加补充信息
-    response_msg.content.data = {
-        {"user_info",
-         {{"user_id", response_msg.sender.user_id}, {"nickname", nickname}}},
-        {"token_expire", 3600} // 令牌有效期示例
-    };
+        .status = "success", .reply_to = msg.message_id, .is_encrypted = false};
 
     send(response_msg);
 
@@ -417,16 +405,20 @@ int Session::recv_fresh_access_token_msg(const Message &msg) {
 
 void Session::send(const Message &msg) {
     // 将消息转换为json格式
-    std::string msg_json = to_json(msg);
-    ws_.async_write(asio::buffer(msg_json),
-                    [self = shared_from_this()](beast::error_code ec, size_t) {
-                        if (ec)
-                            self->close();
-                    });
-    // 记录发送数据
-    Logger::instance().network_log(
-        Logger::OUT, socket().remote_endpoint().address().to_string(), msg_json,
-        beast::buffers_to_string(buffer_.data()));
+    auto msg_json = std::make_shared<std::string>(to_json(msg).dump());
+    ws_.async_write(
+        asio::buffer(*msg_json),
+        [self = shared_from_this(), msg_json](beast::error_code ec, size_t) {
+            if (ec) {
+                self->close();
+            } else {
+                // 记录成功发送日志
+                Logger::instance().network_log(
+                    Logger::OUT,
+                    self->socket().remote_endpoint().address().to_string(),
+                    *msg_json, "");
+            }
+        });
 }
 
 void Session::start_heartbeat_timer() {

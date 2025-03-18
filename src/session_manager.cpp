@@ -45,18 +45,18 @@ void SessionManager::send_to_user(const std::string &user_id,
 }
 
 std::pair<std::string, std::string>
-SessionManager::generate_jwt(const std::string &email) {
-    std::string refresh_token = generate_refresh_jwt(email);
-    std::string access_token = generate_access_jwt(email, refresh_token);
+SessionManager::generate_jwt(const std::string &user_id) {
+    std::string refresh_token = generate_refresh_jwt(user_id);
+    std::string access_token = generate_access_jwt(user_id, refresh_token);
     return {refresh_token, access_token};
 }
 
-std::string SessionManager::generate_refresh_jwt(const std::string &email) {
+std::string SessionManager::generate_refresh_jwt(const std::string &user_id) {
     auto refresh_token =
         jwt::create()
             .set_issuer("auth0")
             .set_type("JWS")
-            .set_payload_claim("email", jwt::claim(email))
+            .set_payload_claim("email", jwt::claim(user_id))
             .set_expires_at(std::chrono::system_clock::now() +
                             std::chrono::hours(360))
             .sign(jwt::algorithm::hs256{config_["jwt"]["refresh_secret_key"]});
@@ -64,16 +64,16 @@ std::string SessionManager::generate_refresh_jwt(const std::string &email) {
     return refresh_token;
 }
 
-std::string SessionManager::generate_access_jwt(const std::string &email,
+std::string SessionManager::generate_access_jwt(const std::string &user_id,
                                                 const std::string &token) {
-    if (validate_jwt(email, token))
+    if (validate_jwt(user_id, token))
 
     {
         auto access_token =
             jwt::create()
                 .set_issuer("auth0")
                 .set_type("JWS")
-                .set_payload_claim("email", jwt::claim(email))
+                .set_payload_claim("email", jwt::claim(user_id))
                 .set_expires_at(std::chrono::system_clock::now() +
                                 std::chrono::minutes(15))
                 .sign(jwt::algorithm::hs256{config_["jwt"]["secret_key"]});

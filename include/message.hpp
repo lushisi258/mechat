@@ -10,19 +10,32 @@ using json = nlohmann::json;
 
 // 消息主类型
 enum class MsgType {
-    Data = 1,    // 数据消息（文本/图片等）
-    Control = 2, // 控制消息（心跳、登录等）
-    System = 3   // 系统消息
+    Data = 1,    // 数据消息
+    Control = 2, // 控制消息
+    System = 3,  // 系统消息
 };
 
 // 内容子类型
 enum class ContentType {
-    Text = 1,
-    Image = 2,
-    File = 3,
-    Login = 4,
-    Heartbeat = 5
+    Text = 1,      // 纯文本
+    Image = 2,     // 图像
+    File = 3,      // 文件
+    Login = 4,     // 登录
+    Register = 5,  // 注册
+    Heartbeat = 6, // 心跳
 };
+
+// MsgType 映射表
+const std::unordered_map<std::string, MsgType> msgTypeMap = {
+    {"Data", MsgType::Data},
+    {"Control", MsgType::Control},
+    {"System", MsgType::System}};
+
+// ContentType 映射表
+const std::unordered_map<std::string, ContentType> contentTypeMap = {
+    {"Text", ContentType::Text},         {"Image", ContentType::Image},
+    {"File", ContentType::File},         {"Login", ContentType::Login},
+    {"Register", ContentType::Register}, {"Heartbeat", ContentType::Heartbeat}};
 
 // 用户信息部分
 struct UserInfo {
@@ -84,20 +97,18 @@ struct Message {
     std::optional<std::string> jwt_token; // 默认nullopt
 };
 
-// 枚举类型JSON转换
-NLOHMANN_JSON_SERIALIZE_ENUM(MsgType, {{MsgType::Data, "data"},
-                                       {MsgType::Control, "control"},
-                                       {MsgType::System, "system"}})
-
-NLOHMANN_JSON_SERIALIZE_ENUM(ContentType,
-                             {{ContentType::Text, "text"},
-                              {ContentType::Image, "image"},
-                              {ContentType::File, "file"},
-                              {ContentType::Login, "login"},
-                              {ContentType::Heartbeat, "heartbeat"}})
-
 // JSON转换方法
 void from_json(Message &msg, const json &j);
 json to_json(const Message &msg);
+
+inline MsgType parseMsgType(const std::string& typeStr) {
+    auto it = msgTypeMap.find(typeStr);
+    return (it != msgTypeMap.end()) ? it->second : MsgType::Data;
+}
+
+inline ContentType parseContentType(const std::string& typeStr) {
+    auto it = contentTypeMap.find(typeStr);
+    return (it != contentTypeMap.end()) ? it->second : ContentType::Text;
+}
 
 } // namespace IM

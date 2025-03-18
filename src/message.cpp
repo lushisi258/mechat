@@ -6,7 +6,16 @@ namespace IM {
 void from_json(Message &msg, const json &j) {
     // 基础字段
     msg.message_id = j.value("message_id", "");
-    msg.type = j.value("type", MsgType::Data);
+    // 解析 type 字段
+    if (j.contains("type")) {
+        if (j["type"].is_number()) {
+            // 兼容旧版数值类型
+            msg.type = static_cast<MsgType>(j["type"].get<int>());
+        } else if (j["type"].is_string()) {
+            std::string typeStr = j["type"].get<std::string>();
+            msg.type = parseMsgType(typeStr);
+        }
+    }
     msg.receiver_id = j.value("receiver_id", "");
     msg.timestamp = j.value("timestamp", 0);
 
@@ -26,7 +35,18 @@ void from_json(Message &msg, const json &j) {
     try {
         if (j.contains("content")) {
             const auto &c = j["content"];
-            msg.content.type = c.value("type", ContentType::Text);
+            // 解析 content.type 字段
+            if (j.contains("content") && j["content"].contains("type")) {
+                const auto &contentJson = j["content"];
+                if (contentJson["type"].is_string()) {
+                    std::string contentTypeStr =
+                        contentJson["type"].get<std::string>();
+                    msg.content.type = parseContentType(contentTypeStr);
+                } else if (contentJson["type"].is_number()) {
+                    msg.content.type = static_cast<ContentType>(
+                        contentJson["type"].get<int>());
+                }
+            }
             msg.content.data = c.value("data", json::object());
         }
     } catch (const json::parse_error &e) {
