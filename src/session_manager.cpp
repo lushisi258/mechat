@@ -56,7 +56,7 @@ std::string SessionManager::generate_refresh_jwt(const std::string &user_id) {
         jwt::create()
             .set_issuer("auth0")
             .set_type("JWS")
-            .set_payload_claim("email", jwt::claim(user_id))
+            .set_payload_claim("user_id", jwt::claim(user_id))
             .set_expires_at(std::chrono::system_clock::now() +
                             std::chrono::hours(360))
             .sign(jwt::algorithm::hs256{config_["jwt"]["refresh_secret_key"]});
@@ -66,14 +66,14 @@ std::string SessionManager::generate_refresh_jwt(const std::string &user_id) {
 
 std::string SessionManager::generate_access_jwt(const std::string &user_id,
                                                 const std::string &token) {
-    if (validate_jwt(user_id, token))
+    if (validate_jwt(user_id, token, false))
 
     {
         auto access_token =
             jwt::create()
                 .set_issuer("auth0")
                 .set_type("JWS")
-                .set_payload_claim("email", jwt::claim(user_id))
+                .set_payload_claim("user_id", jwt::claim(user_id))
                 .set_expires_at(std::chrono::system_clock::now() +
                                 std::chrono::minutes(15))
                 .sign(jwt::algorithm::hs256{config_["jwt"]["secret_key"]});
@@ -86,20 +86,28 @@ std::string SessionManager::generate_access_jwt(const std::string &user_id,
     }
 }
 
-bool SessionManager::validate_jwt(const std::string &email,
-                                  const std::string &token) {
+bool SessionManager::validate_jwt(const std::string &user_id,
+                                  const std::string &token,
+                                  bool is_access_token) {
     try {
+        // 根据 token 类型的不同选择不同的 key
+        std::string key;
+        if (is_access_token) {
+            key = config_["jwt"]["secret_key"];
+        } else {
+            key = config_["jwt"]["refresh_secret_key"];
+        }
         auto decoded = jwt::decode(token);
         auto verifier = jwt::verify()
-                            .allow_algorithm(jwt::algorithm::hs256{
-                                config_["jwt"]["secret_key"]})
+                            .allow_algorithm(jwt::algorithm::hs256{key})
                             .with_issuer("auth0");
 
         verifier.verify(decoded);
 
-        email == decoded.get_payload_claim("email").as_string();
-
-        return true;
+        if (user_id == decoded.get_payload_claim("user_id").as_string()) {
+            return true;
+        }
+        return false;
     } catch (const std::exception &e) {
         std::cerr << "JWT validation failed: " << e.what() << std::endl;
         return false;

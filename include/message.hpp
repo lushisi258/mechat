@@ -17,12 +17,19 @@ enum class MsgType {
 
 // 内容子类型
 enum class ContentType {
-    Text = 1,      // 纯文本
-    Image = 2,     // 图像
-    File = 3,      // 文件
-    Login = 4,     // 登录
-    Register = 5,  // 注册
-    Heartbeat = 6, // 心跳
+    // Date 类型
+    Text = 1,  // 纯文本
+    Image = 2, // 图像
+    File = 3,  // 文件
+    // Control 类型
+    Register = 4,             // 注册
+    Login = 5,                // 登录
+    FreshToken = 6,           // 刷新 token
+    Logout = 7,               // 登出
+    FriendRequest = 8,        // 加好友
+    ApproveFriendRequest = 9, // 同意加好友
+    DeleteFriend = 10,        // 删除好友
+    // System 类型
 };
 
 // MsgType 映射表
@@ -33,9 +40,16 @@ const std::unordered_map<std::string, MsgType> msgTypeMap = {
 
 // ContentType 映射表
 const std::unordered_map<std::string, ContentType> contentTypeMap = {
-    {"Text", ContentType::Text},         {"Image", ContentType::Image},
-    {"File", ContentType::File},         {"Login", ContentType::Login},
-    {"Register", ContentType::Register}, {"Heartbeat", ContentType::Heartbeat}};
+    {"Text", ContentType::Text},
+    {"Image", ContentType::Image},
+    {"File", ContentType::File},
+    {"Register", ContentType::Register},
+    {"Login", ContentType::Login},
+    {"FreshToken", ContentType::FreshToken},
+    {"Logout", ContentType::Logout},
+    {"FriendRequest", ContentType::FriendRequest},
+    {"ApproveFriendRequest", ContentType::ApproveFriendRequest},
+    {"DeleteFriend", ContentType::DeleteFriend}};
 
 // 用户信息部分
 struct UserInfo {
@@ -101,12 +115,12 @@ struct Message {
 void from_json(Message &msg, const json &j);
 json to_json(const Message &msg);
 
-inline MsgType parseMsgType(const std::string& typeStr) {
+inline MsgType parseMsgType(const std::string &typeStr) {
     auto it = msgTypeMap.find(typeStr);
     return (it != msgTypeMap.end()) ? it->second : MsgType::Data;
 }
 
-inline ContentType parseContentType(const std::string& typeStr) {
+inline ContentType parseContentType(const std::string &typeStr) {
     auto it = contentTypeMap.find(typeStr);
     return (it != contentTypeMap.end()) ? it->second : ContentType::Text;
 }

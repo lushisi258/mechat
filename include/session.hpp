@@ -14,8 +14,9 @@ namespace IM {
 
 class Session : public std::enable_shared_from_this<Session> {
   public:
-    // 使用 SSL 加密的 WebSocket 流
+    // WebSocket 流
     boost::beast::websocket::stream<boost::asio::ssl::stream<tcp::socket>> ws_;
+    long long int user_id = 0;
     std::string user_id_ = "";
     beast::flat_buffer buffer_;
     asio::steady_timer heartbeat_timer_;
@@ -40,10 +41,15 @@ class Session : public std::enable_shared_from_this<Session> {
     void close();
     // 消息处理函数
     // int recv_text_msg(const Message &msg);
+    // int recv_image_msg(const Message &msg);
+    // int recv_file_msg(const Message &msg);
     int recv_register_msg(const Message &msg);
     int recv_login_msg(const Message &msg);
     int recv_fresh_access_token_msg(const Message &msg);
     // int recv_logout_msg(const Message &msg);
+    int recv_friend_request_msg(const Message &msg);
+    int recv_approve_friend_request_msg(const Message &msg);
+    void send_error(const std::string e, const std::string msg_id);
     // SSL 握手
     void do_handshake();
     void on_handshake(beast::error_code ec);
@@ -56,6 +62,8 @@ class Session : public std::enable_shared_from_this<Session> {
     void on_pong_received();
     // 其他功能函数
     std::string do_hash(const std::string &password);
+    // 根据邮箱获得 id
+    long long int Session::get_id_by_email(const std::string &email);
     // 生成时间戳
     int64_t generate_timestamp();
     // 生成 UUID

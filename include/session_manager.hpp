@@ -37,7 +37,7 @@ class SessionManager {
     std::string generate_access_jwt(const std::string &email,
                                     const std::string &token);
     // 验证 token 合法性
-    bool validate_jwt(const std::string &email, const std::string &token);
+    bool validate_jwt(const std::string &email, const std::string &token, bool is_access_token);
     // 根据 refresh token 刷新 access token
     std::string refresh_access_token(const std::string &email,
                                      const std::string &refresh_token);
