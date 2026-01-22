@@ -1,7 +1,7 @@
 // session.hpp
 #pragma once
 #include "common.hpp"
-#include "database_pool.hpp"
+#include "database.hpp"
 #include "logger.hpp"
 #include "message.hpp"
 #include "session_manager.hpp"

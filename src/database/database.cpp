@@ -1,5 +1,6 @@
 // database_pool.cpp
-#include "database_pool.hpp"
+#include "../include/database.hpp"
+#include <cstring>
 #include <stdexcept>
 
 // MySQLConnectionPool
@@ -16,8 +17,9 @@ MySQLConnectionPool::MySQLConnectionPool(const std::string &host,
 
 MYSQL *MySQLConnectionPool::create_raw_connection() {
     MYSQL *conn = mysql_init(nullptr);
-    if (!conn)
+    if (!conn) {
         throw std::runtime_error("mysql_init failed");
+    }
 
     my_bool reconnect = 1;
     mysql_options(conn, MYSQL_OPT_RECONNECT, &reconnect);
@@ -35,16 +37,14 @@ MYSQL *MySQLConnectionPool::create_raw_connection() {
 }
 
 std::unique_ptr<MYSQL, std::function<void(MYSQL *)>>
-
 MySQLConnectionPool::get_connection() {
     std::unique_lock<std::mutex> lock(pool_mutex_);
 
     if (!pool_.empty()) {
         auto conn = pool_.front();
         pool_.pop();
-        // 使用 lambda 捕获 this 并指定删除器
-        return std::unique_ptr<MYSQL, std::function<void(MYSQL *)>>(
-            conn, [this](MYSQL *c) { release_connection(c); });
+        active_connections_++;
+        return {conn, [this](MYSQL *c) { release_connection(c); }};
     }
 
     if (active_connections_ >= max_pool_size_) {
@@ -53,22 +53,24 @@ MySQLConnectionPool::get_connection() {
 
     MYSQL *raw_conn = create_raw_connection();
     active_connections_++;
-    return std::unique_ptr<MYSQL, std::function<void(MYSQL *)>>(
-        raw_conn, [this](MYSQL *c) { release_connection(c); });
+    return {raw_conn, [this](MYSQL *c) { release_connection(c); }};
 }
 
 void MySQLConnectionPool::release_connection(MYSQL *conn) {
     std::lock_guard<std::mutex> lock(pool_mutex_);
 
-    if (mysql_ping(conn) != 0) { // 检查连接有效性
-        mysql_close(conn);
-        active_connections_--;
-    } else {
+    bool valid = (mysql_ping(conn) == 0);
+    if (valid && pool_.size() < max_pool_size_) {
         pool_.push(conn);
+    } else {
+        mysql_close(conn);
     }
+
+    active_connections_--;
 }
 
 MySQLConnectionPool::~MySQLConnectionPool() {
+    std::lock_guard<std::mutex> lock(pool_mutex_);
     while (!pool_.empty()) {
         mysql_close(pool_.front());
         pool_.pop();
@@ -81,13 +83,14 @@ RedisConnectionPool::RedisConnectionPool(const std::string &host, int port,
                                          size_t max_pool_size)
     : host_(host), port_(port), max_pool_size_(max_pool_size) {}
 
-std::unique_ptr<redisContext, void (*)(redisContext *)>
+std::unique_ptr<redisContext, std::function<void(redisContext *)>>
 RedisConnectionPool::get_connection() {
     std::lock_guard<std::mutex> lock(pool_mutex_);
 
     if (!pool_.empty()) {
         auto conn = std::move(pool_.front());
         pool_.pop();
+        active_connections_++;
         return conn;
     }
 
@@ -103,41 +106,70 @@ RedisConnectionPool::get_connection() {
     }
 
     active_connections_++;
-    return std::unique_ptr<redisContext, void (*)(redisContext *)>(
-        raw_conn, [](redisContext *ctx) { redisFree(ctx); });
+    return {raw_conn,
+            [this](redisContext *ctx) { // 使用std::function允许捕获this
+                release_connection(
+                    std::unique_ptr<redisContext, void (*)(redisContext *)>(
+                        ctx,
+                        redisFree // 显式指定删除器
+                        ));
+            }};
 }
 
 void RedisConnectionPool::release_connection(
     std::unique_ptr<redisContext, void (*)(redisContext *)> conn) {
     std::lock_guard<std::mutex> lock(pool_mutex_);
 
-    // 发送PING保持连接活跃
-    redisReply *reply = (redisReply *)redisCommand(conn.get(), "PING");
-    if (reply && reply->type != REDIS_REPLY_ERROR) {
-        freeReplyObject(reply);
-        pool_.push(std::move(conn));
-    } else {
-        active_connections_--; // 无效连接直接销毁
+    bool valid = false;
+    if (conn && !conn->err) { // 增强有效性检查
+        redisReply *reply =
+            static_cast<redisReply *>(redisCommand(conn.get(), "PING"));
+        if (reply) {
+            valid = (reply->type != REDIS_REPLY_ERROR);
+            freeReplyObject(reply);
+        }
     }
+
+    if (valid && pool_.size() < max_pool_size_) {
+        pool_.push(std::move(conn));
+    }
+    // 如果无效，unique_ptr的删除器会自动调用redisFree
+
+    active_connections_--;
 }
 
 RedisConnectionPool::~RedisConnectionPool() {
     std::lock_guard<std::mutex> lock(pool_mutex_);
     while (!pool_.empty()) {
-        pool_.pop(); // unique_ptr 自动释放
+        auto &conn = pool_.front();
+        if (conn) { // 显式释放资源
+            redisFree(conn.get());
+        }
+        pool_.pop();
     }
 }
 
 // MongoDBConnectionPool
-// 初始化静态成员
 mongocxx::instance MongoDBConnectionPool::instance_{};
 
 MongoDBConnectionPool::MongoDBConnectionPool(const std::string &uri,
                                              size_t min_pool_size,
-                                             size_t max_pool_size)
-    : connection_pool_(mongocxx::uri(uri), mongocxx::options::pool()) {}
+                                             size_t max_pool_size) {
+    mongocxx::options::pool pool_options;
+    try {
+        connection_pool_ = mongocxx::pool(mongocxx::uri(uri), pool_options);
+    } catch (const std::exception &e) {
+        std::cerr << "Failed to create MongoDB connection pool: " << e.what()
+                  << std::endl;
+    }
+}
 
 mongocxx::client MongoDBConnectionPool::get_connection() {
     auto entry = connection_pool_.acquire();
+    if (!entry) {
+        std::cerr << "Failed to acquire a MongoDB connection from the pool."
+                  << std::endl;
+        throw std::runtime_error("Failed to acquire MongoDB connection");
+    }
     return std::move(*entry);
 }

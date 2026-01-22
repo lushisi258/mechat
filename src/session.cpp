@@ -631,13 +631,18 @@ int Session::recv_friend_request_msg(const Message &msg) {
     return EXIT_SUCCESS;
 }
 
+// 在处理好友申请中，处理者的 user_id 是作为数据库中的 friend_id 被存储的
+// 消息需要包含 friend_id（也就是好友申请发起者的id）
 int Session::recv_approve_friend_request_msg(const Message &msg) {
-    // 检查必要参数：必须包含 friend_id/friend_email
-    if (!msg.content.data.contains("friend_id") &&
-        !msg.content.data.contains("friend_email")) {
-        send_error("缺少 friend_id/friend_email", msg.message_id);
+    // 检查必要参数：必须包含 friend_id (string)
+    if (!msg.content.data.contains("friend_id")) {
+        send_error("缺少 friend_id", msg.message_id);
         return EXIT_FAILURE;
     }
+
+    // 初始化 friend_id
+    std::string friend_id_str = msg.content.data["friend_id"];
+    long long int friend_id = std::stoll(friend_id_str);
 
     // 获取数据库连接
     auto conn = mysql_pool_.get_connection();
@@ -653,17 +658,10 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
     std::string query;
     MYSQL_STMT *stmt = nullptr;
 
-    if (user_id) {
-        query =
-            "SELECT user_id FROM friends "
-            "WHERE request_id = ? AND to_user_id = ? AND status = 'pending' "
-            "FOR UPDATE"; // 加锁防止并发修改
-    } else {
-        query =
-            "SELECT request_id FROM friend_requests "
-            "WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending' "
+    // 参数1是
+    query = "SELECT user_id FROM friends "
+            "WHERE friend_id = ? AND status = 0 "
             "FOR UPDATE";
-    }
 
     stmt = mysql_stmt_init(conn.get());
     if (!stmt) {
@@ -682,43 +680,9 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
 
     // 绑定参数
     MYSQL_BIND params[2] = {};
-    long long int request_id_or_from_user_id = 0;
 
-    if (user_id) {
-        // 使用 request_id 查询
-        try {
-            request_id_or_from_user_id =
-                std::stoll(msg.content.data["request_id"]);
-        } catch (...) {
-            send_error("请求ID格式错误", msg.message_id);
-            return EXIT_FAILURE;
-        }
-        params[0].buffer_type = MYSQL_TYPE_LONGLONG;
-        params[0].buffer = &request_id_or_from_user_id;
-    } else {
-        // 使用 friend_id/friend_email 查询申请者ID
-        std::string friend_identifier;
-        if (msg.content.data.contains("friend_email")) {
-            // 根据邮箱查询用户ID（代码类似recv_friend_request_msg）
-            std::string email = msg.content.data["friend_email"];
-            long long int from_user_id = 0;
-            if (!get_id_by_email(email)) {
-                send_error("申请者不存在", msg.message_id);
-                return EXIT_FAILURE;
-            }
-            request_id_or_from_user_id = from_user_id;
-        } else {
-            try {
-                request_id_or_from_user_id =
-                    std::stoll(msg.content.data["friend_id"]);
-            } catch (...) {
-                send_error("好友ID格式错误", msg.message_id);
-                return EXIT_FAILURE;
-            }
-        }
-        params[0].buffer_type = MYSQL_TYPE_LONGLONG;
-        params[0].buffer = &request_id_or_from_user_id;
-    }
+    params[0].buffer_type = MYSQL_TYPE_LONGLONG;
+    params[0].buffer = &friend_id;
 
     // 第二个参数是当前用户的ID（接收者）
     params[1].buffer_type = MYSQL_TYPE_LONGLONG;
@@ -741,13 +705,13 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
 
     // 获取结果
     MYSQL_BIND result = {};
-    long long int from_user_id = 0; // 当使用request_id时，需要获取from_user_id
-    if (use_request_id) {
+    long long int from_user_id = 0;
+    if (user_id) {
         result.buffer_type = MYSQL_TYPE_LONGLONG;
         result.buffer = &from_user_id;
     } else {
         result.buffer_type = MYSQL_TYPE_LONGLONG;
-        result.buffer = &request_id_or_from_user_id; // 此处存储实际request_id
+        result.buffer = &friend_id;
     }
 
     if (mysql_stmt_bind_result(stmt, &result)) {
@@ -770,13 +734,6 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
         mysql_rollback(conn.get());
         return EXIT_FAILURE;
     }
-
-    // 如果未使用request_id，此时request_id_or_from_user_id是实际request_id
-    const long long int actual_request_id = use_request_id
-                                                ? request_id_or_from_user_id
-                                                : request_id_or_from_user_id;
-    const long long int actual_from_user_id =
-        use_request_id ? from_user_id : request_id_or_from_user_id;
 
     // 更新请求状态为已批准
     std::string update_query =
@@ -803,7 +760,7 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
 
     MYSQL_BIND update_param = {};
     update_param.buffer_type = MYSQL_TYPE_LONGLONG;
-    update_param.buffer = &actual_request_id;
+    update_param.buffer = request_id;
     if (mysql_stmt_bind_param(update_stmt, &update_param)) {
         Logger::instance().bug_log("Bind update error: " +
                                    std::string(mysql_stmt_error(update_stmt)));
@@ -842,9 +799,9 @@ int Session::recv_approve_friend_request_msg(const Message &msg) {
         return EXIT_FAILURE;
     }
 
-    // 绑定参数：user_id_, actual_from_user_id 和 actual_from_user_id, user_id_
-    long long int insert_params[4] = {user_id_, actual_from_user_id,
-                                      actual_from_user_id, user_id_};
+    // 绑定参数：user_id, actual_from_user_id 和 actual_from_user_id, user_id
+    long long int insert_params[4] = {user_id, actual_from_user_id,
+                                      actual_from_user_id, user_id};
 
     MYSQL_BIND insert_binds[4] = {};
     for (int i = 0; i < 4; i++) {

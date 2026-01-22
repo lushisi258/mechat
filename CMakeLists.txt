@@ -13,7 +13,8 @@ find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 
 add_executable(IMServer
-    src/database_pool.cpp
+    src/database/database.cpp
+    src/database/database_util.cpp
     src/logger.cpp
     src/main.cpp
     src/message.cpp
