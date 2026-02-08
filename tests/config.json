@@ -1,6 +1,0 @@
-{
-    "server_url": "wss://localhost:2233",
-    "num_clients": 100,
-    "num_message": 1000,
-    "message_delay": 0.1
-}
