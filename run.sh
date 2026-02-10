@@ -1,1 +1,0 @@
-sudo /home/lushisi/projects/mechat/build/IMServer
