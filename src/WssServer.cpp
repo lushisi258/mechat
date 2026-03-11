@@ -6,8 +6,8 @@
 
 WssServer::WssServer(asio::io_context& ioc, unsigned short port) : ioc_(ioc), acceptor_(ioc, {tcp::v6(), port}), ctx_(ssl::context::tlsv12) {
     // load CA
-    ctx_.use_certificate_chain_file("/etc/letsencrypt/live/lushisi.top/fullchain.pem");
-    ctx_.use_private_key_file("/etc/letsencrypt/live/lushisi.top/privkey.pem", ssl::context::pem);
+    ctx_.use_certificate_chain_file("/home/lushisi/projects/mechat/cert/fullchain.pem");
+    ctx_.use_private_key_file("/home/lushisi/projects/mechat/cert/privkey.pem", ssl::context::pem);
 }
 
 // run server
