@@ -28,8 +28,8 @@ int main(){
 
     // set ssl certificate
     ssl::context ctx{ssl::context::tlsv12};
-    ctx.use_certificate_chain_file("/etc/letsencrypt/live/lushisi.top/fullchain.pem");
-    ctx.use_private_key_file("/etc/letsencrypt/live/lushisi.top/privkey.pem", ssl::context::pem);
+    ctx.use_certificate_chain_file("~/projects/mechat/cert/fullchain.pem");
+    ctx.use_private_key_file("~/projects/mechat/cert/privkey.pem", ssl::context::pem);
 
     // listen port 2233
     tcp::acceptor acceptor{ioc, {net::ip::make_address("::"), 2233}};
