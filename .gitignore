@@ -1,6 +1,6 @@
-/.venv/
-/.vscode/
-/cert/
-/build/
-/config/
-/logs/
+.venv/
+.vscode/
+cert/
+build/
+config/
+logs/
