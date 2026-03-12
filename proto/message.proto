@@ -1,0 +1,28 @@
+syntax = "proto3";
+package mechat;
+
+// message type
+enum TYPE {
+    UNKNOWN = 0;
+    TEST = 100;
+    LOGIN_REQ = 101;
+    CHAT_REQ = 201;
+}
+
+// basic structure
+message GameMessage {
+    TYPE type_id = 1;
+    uint64 seq_id = 2;       // message seq
+    bytes data = 3;          // message data
+}
+
+// test msg 
+message TestMessage {
+    string content = 1;
+}
+
+// chat message
+message ChatMessage {
+    uint64 to_uid = 1;
+    string content = 2;
+}
