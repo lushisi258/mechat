@@ -10,7 +10,7 @@ enum TYPE {
 }
 
 // basic structure
-message GameMessage {
+message Message {
     TYPE type_id = 1;
     uint64 seq_id = 2;       // message seq
     bytes data = 3;          // message data

@@ -1,11 +1,13 @@
 #include "WssSession.hpp"
+#include "MsgDispatcher.hpp"
 #include <iostream>
 
-WssSession::WssSession(asio::ip::tcp::socket socket, ssl::context &ctx)
-    : ws_(std::move(socket), ctx) {}
+WssSession::WssSession(asio::ip::tcp::socket socket, ssl::context &ctx,
+                       std::shared_ptr<MsgDispatcher> dispatcher)
+    : ws_(std::move(socket), ctx), dispatcher_(dispatcher) {}
 
 void WssSession::run() {
-    // SSL async handshake
+    // Perform asynchronous SSL handshake
     ws_.next_layer().async_handshake(
         ssl::stream_base::server,
         beast::bind_front_handler(&WssSession::on_handshake,
@@ -15,7 +17,7 @@ void WssSession::run() {
 void WssSession::on_handshake(beast::error_code ec) {
     if (ec)
         return;
-    // upgrade HTTP to WS
+    // Upgrade HTTP to WebSocket
     ws_.async_accept(
         beast::bind_front_handler(&WssSession::on_accept, shared_from_this()));
 }
@@ -27,7 +29,7 @@ void WssSession::on_accept(beast::error_code ec) {
 }
 
 void WssSession::do_read() {
-    // read data to buffer
+    // Read data into the buffer
     ws_.async_read(buffer_, beast::bind_front_handler(&WssSession::on_read,
                                                       shared_from_this()));
 }
@@ -38,41 +40,16 @@ void WssSession::on_read(beast::error_code ec, std::size_t bytes_transferred) {
     if (ec)
         return;
 
-    // trans binary data to string
+    // Convert binary data to string
     std::string data = beast::buffers_to_string(buffer_.data());
-    // parse msg to GameMessage
-    mechat::GameMessage income_msg;
-    if (income_msg.ParseFromString(data)) {
-        // handle msg by type
-        if (income_msg.type_id() == mechat::TEST) {
-            handle_test_msg(income_msg);
-        }
+    std::cout << "wss session 1" << std::endl;
+    // Callback dispatcher
+    if (dispatcher_) {
+        std::cout << "wss session 2" << std::endl;
+        dispatcher_->dispatch(shared_from_this(), data);
     }
 
-    // clear buffer and continue listen
-    buffer_.consume(bytes_transferred);
-}
-
-void WssSession::on_write(beast::error_code ec, std::size_t bytes_transferred) {
-    if (ec)
-        return;
-    // clean buffer
+    // Clear up buffer
     buffer_.consume(buffer_.size());
-    // continue read
     do_read();
-}
-
-void WssSession::handle_test_msg(const mechat::GameMessage &msg) {
-    mechat::TestMessage test_msg;
-    if (test_msg.ParseFromString(msg.data())) {
-        std::cout << test_msg.content() << std::endl;
-    }
-}
-
-void WssSession::send_msg(const mechat::GameMessage &msg) {
-    msg.SerializeToString(&write_data_);
-
-    ws_.async_write(
-        asio::buffer(write_data_),
-        beast::bind_front_handler(&WssSession::on_write, shared_from_this()));
 }

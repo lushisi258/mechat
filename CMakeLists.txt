@@ -20,6 +20,8 @@ set(SOURCES
     main.cpp
     src/WssServer.cpp
     src/WssSession.cpp
+    src/MsgDispatcher.cpp
+    src/MsgHandler/TestMsg.cpp
     ${PROTO_SRCS} 
 )
 
